@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual Environments
+ml-env/
+venv/
+env/
+
+# IDE Settings
+.vscode/
+.idea/
+
+# Large Data & Datasets
+data/
+*.csv
+*.pkl
+*.tar.gz
+
+# Generated Logs, Models, and Plots
+*.png
+results/
+fedavgeachround/
+fedavgresult/
+fedprox/
+fedproxeachround/
