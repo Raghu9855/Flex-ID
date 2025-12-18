@@ -183,6 +183,24 @@ In the context of an Intrusion Detection System (IDS), not all metrics are creat
 - **Resilience**: Under adversarial attack (Data/Model poisoning), the standard **FedAvg** model's reliability crashes, with its F1-score dropping to **0.67**. In contrast, our **FedProx** implementation proves robust, maintaining a high **0.89 F1-score**.
 - **Critical Detection**: Most importantly, FedProx sustains a high **Recall**, ensuring that it continues to detect intrusions even when some clients are compromised.
 
+#### ⚖️ False Positives vs. False Negatives
+Understanding the trade-off in our results:
+
+- **False Positive (FP)**: Legitimate traffic incorrectly flagged as an attack ("False Alarm").
+    - *Impact*: Inconvenience. A user might be temporarily blocked or asked to re-authenticate.
+- **False Negative (FN)**: An actual attack incorrectly flagged as safe ("Missed Attack").
+    - *Impact*: **Critical Security Breach.** The system fails to stop an intruder.
+
+**Project Analysis:**
+- **FedAvg (Compromised)**: When attacked, it collapsed to predicting "Benign" for almost everything.
+    - **FP ≈ 0**: It rarely raised alarms.
+    - **FN ≈ 100%**: **Catastrophic.** It missed almost every attack.
+- **FedProx (Robust)**: It maintained a defensive posture.
+    - **FP**: Increased slightly (flagging ~9% of benign traffic).
+    - **FN**: **Very Low.** It successfully detected ~96% of attacks.
+    - **Conclusion**: FedProx effectively prioritized security (Low FN) over convenience (Low FP), which is the correct behavior for a critical system.
+
+
 
 
 
