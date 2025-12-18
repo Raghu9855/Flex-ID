@@ -162,23 +162,26 @@ python explain_model.py --weights fedavgeachround/round-5-weights.pkl
 
 ## 📈 Performance Results
 
-Below are the confusion matrices showing the detection performance of the Global Model.
+Below is a summary of the Global Model's performance across different scenarios. The results highlight the resilience of the **FedProx** strategy compared to the standard FedAvg approach.
 
-### 1. Baseline Performance (No Attack)
-The model effectively classifies benign traffic and detects various attacks with high accuracy when no adversarial clients are present.
+| Scenario | Strategy | Accuracy | Weighted F1-Score | Result |
+| :--- | :--- | :--- | :--- | :--- |
+| **Baseline (No Attack)** | FedAvg | 88.40% | 0.86 | Good Performance |
+| | **FedProx** | **88.81%** | **0.89** | Slightly Better |
+| **Adversarial Attack** | FedAvg | 76.29% | 0.67 | **Significant Drop** |
+| | **FedProx** | **89.11%** | **0.89** | **Resilient** |
 
-<p float="left">
-  <img src="images/no_attack_1.png" width="45%" />
-  <img src="images/no_attack_2.png" width="45%" /> 
-</p>
+### 📊 Importance of Evaluation Metrics
 
-### 2. Performance under Adversarial Attack
-When adversarial attacks (Data Poisoning/Model Poisoning) are introduced, the model's performance can degrade if not defended against.
+In the context of an Intrusion Detection System (IDS), not all metrics are created equal:
 
-<p float="left">
-  <img src="images/attack_1.png" width="45%" />
-  <img src="images/attack_2.png" width="45%" /> 
-</p>
+- **Accuracy**: Indicates the general correctness of the model. However, in security datasets where 90% of traffic might be benign, a high accuracy can be misleading (e.g., a model that predicts "Benign" for everything might still be 90% accurate but 0% effective).
+- **Recall (Detection Rate)**: **Critical for Security.** It measures the percentage of actual attacks that were successfully detected. A low recall means the system is missing attacks (False Negatives), leaving the network vulnerable.
+- **F1-Score**: The harmonic mean of Precision and Recall. It provides a balanced view, ensuring the model isn't just flagging everything as an attack (low precision) or missing too many threats (low recall).
+
+#### Project Performance Analysis
+- **Resilience**: Under adversarial attack (Data/Model poisoning), the standard **FedAvg** model's reliability crashes, with its F1-score dropping to **0.67**. In contrast, our **FedProx** implementation proves robust, maintaining a high **0.89 F1-score**.
+- **Critical Detection**: Most importantly, FedProx sustains a high **Recall**, ensuring that it continues to detect intrusions even when some clients are compromised.
 
 
 
