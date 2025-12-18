@@ -191,14 +191,23 @@ Understanding the trade-off in our results:
 - **False Negative (FN)**: An actual attack incorrectly flagged as safe ("Missed Attack").
     - *Impact*: **Critical Security Breach.** The system fails to stop an intruder.
 
-**Project Analysis:**
-- **FedAvg (Compromised)**: When attacked, it collapsed to predicting "Benign" for almost everything.
-    - **FP ≈ 0**: It rarely raised alarms.
-    - **FN ≈ 100%**: **Catastrophic.** It missed almost every attack.
-- **FedProx (Robust)**: It maintained a defensive posture.
-    - **FP**: Increased slightly (flagging ~9% of benign traffic).
-    - **FN**: **Very Low.** It successfully detected ~96% of attacks.
-    - **Conclusion**: FedProx effectively prioritized security (Low FN) over convenience (Low FP), which is the correct behavior for a critical system.
+#### ⚖️ False Positives vs. False Negatives Analysis
+
+In cybersecurity, the balance between **False Positives (FP)** and **False Negatives (FN)** determines the usability and security of the system.
+
+- **False Positive (FP) Rate**: % of Benign traffic incorrectly flagged as Attack (False Alarm).
+- **False Negative (FN) Rate**: % of Attacks incorrectly flagged as Benign (**Missed Attack**).
+
+| Scenario | Model | FP Rate (False Alarms) | FN Rate (Missed Attacks) | Security Implication |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Baseline**<br>(No Attack) | **FedAvg** | **2.0%** (Low) | **38.5%** (High) | ⚠️ Misses stealthy attacks even normally. |
+| | **FedProx** | **10.0%** (Moderate) | **14.5%** (Low) | ✅ Catching more attacks, slightly more noise. |
+| **2. Under Attack**<br>(Adversarial) | **FedAvg** | **0.0%** | **90.3%** (Critical) | ❌ **System Failure**. Misses almost everything. |
+| | **FedProx** | **9.0%** (Stable) | **16.2%** (Stable) | 🛡️ **Robust**. Maintains security despite attack. |
+
+**Key Takeaway:**
+- **FedAvg** collapses under attack, with the Missed Attack Rate (FN) spiking to **90%**. It becomes effectively useless.
+- **FedProx** remains stable. It maintains a **low Missed Attack Rate (~16%)** both before and after the attack, proving its resilience. It accepts a constant ~9-10% False Alarm rate to ensure it stays vigilant.
 
 
 
