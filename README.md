@@ -1,5 +1,49 @@
 # Flex-ID: Federated Learning Intrusion Detection System
 
+## 📚 Libraries & Technologies Used
+
+This project leverages a tailored stack of Python libraries, each serving a critical role in the Federated Learning implementation:
+
+| Library | Purpose in Flex-ID |
+| :--- | :--- |
+| **`flwr` (Flower)** | The core Federated Learning framework. It handles the complex communication between the Server and Clients, managing the transmission of model weights and aggregation strategies (FedAvg, FedProx). |
+| **`tensorflow`** | The Deep Learning backend used to build and train the Deep Neural Network (DNN) model. It provides the computation graph for training and gradients. |
+| **`scikit-learn`** | Used for essential data preprocessing (Label Encoding, Train-Test Splits) and performance metrics (F1 Score, Confusion Matrix, Classification Reports). |
+| **`imbalanced-learn`** | Provides **SMOTE** (Synthetic Minority Over-sampling Technique) to address class imbalance. In cyber-security datasets, attacks are rare compared to benign traffic; SMOTE generates synthetic examples to ensure the model learns to detect these rare attacks. |
+| **`pandas`** | The backbone for data manipulation. Used to load the massive CSE-CIC-IDS2018 CSV datasets, clean missing values, and handle feature columns. |
+| **`numpy`** | efficient numerical computation. Used for array manipulations, mathematical operations (like calculating weights), and handling model parameters. |
+| **`shap`** | **SH**apley **A**dditive ex**P**lanations. Provides Explainable AI (XAI) capabilities, allowing us to ask *why* the model classified a packet as an attack by visualizing feature contributions. |
+| **`matplotlib`** | Data visualization library used to generate confusion matrices, class distribution plots, and performance comparisons. |
+
+## 🔄 Process Workflow & Importance
+
+Understanding the lifecycle of this Federated Learning system:
+
+### 1. Data Preprocessing (`1_process_data.py`)
+**Why?** Raw network traffic data is messy, contains infinities, and has varying scales.
+- **What we do:** We clean the dataset, normalize numerical features (MinMax Scaling), and encode categorical labels. This ensures the Neural Network receives clean, standardized input, which is crucial for convergence.
+
+### 2. Client Partitioning (`2_create_partitions.py`)
+**Why?** In the real world, data is **Non-IID** (Independent and Identically Distributed). A hospital in New York sees different diseases than one in Tokyo. Similarly, different network nodes see different attacks.
+- **What we do:** We split the data into 4 partitions. We intentionally skew the distributions (e.g., Client 0 sees more DDoS attacks) to simulate this real-world heterogeneity. This tests if our Federated Learning model can generalize despite these differences.
+
+### 3. Server Initialization (`4_server.py`)
+**Why?** To coordinate the learning process without centralizing data.
+- **What we do:** The server acts as the conductor. It sends the global model to clients, waits for their updates, and then **aggregates** them.
+    - **FedAvg**: Averages weights standardly.
+    - **FedProx**: Adds a proximal term to handle "straggler" clients and heterogeneous data, preventing local models from drifting too far from the global model.
+
+### 4. Client Training (`client.py` & `client_attack.py`)
+**Why?** Privacy. Data never leaves the client device.
+- **What we do:**
+    - **Local Training**: Clients train the model on their *local* private data.
+    - **Class Balancing**: We apply **SMOTE** locally so the model doesn't just learn to predict "Benign" for everything.
+    - **Adversarial Simulation**: We use `client_attack.py` to pretend to be a hacker (flipping labels or poisoning weights) to test if the Server is robust enough to detect or survive the attack.
+
+### 5. Evaluation & Explainability
+**Why?** Trust. A black-box model is dangerous in security.
+- **What we do:** We generate confusion matrices to see exact detection rates. We use **SHAP** to verify that the model is looking at relevant features (e.g., Packet Size, Flow Duration) rather than noise.
+
 This project implements a Federated Learning-based Intrusion Detection System (IDS) using the CSE-CIC-IDS2018 dataset. It supports both **FedAvg** and **FedProx** strategies to train models across distributed clients while keeping data decentralized.
 
 ## 📂 Project Structure
