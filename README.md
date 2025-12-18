@@ -160,6 +160,27 @@ python explain_model.py --weights fedavgeachround/round-5-weights.pkl
 
 **Output:** `shap_summary_plot.png` (Shows feature importance ranking).
 
+## 📈 Performance Results
+
+Below are the confusion matrices showing the detection performance of the Global Model.
+
+### 1. Baseline Performance (No Attack)
+The model effectively classifies benign traffic and detects various attacks with high accuracy when no adversarial clients are present.
+
+<p float="left">
+  <img src="images/no_attack_1.png" width="45%" />
+  <img src="images/no_attack_2.png" width="45%" /> 
+</p>
+
+### 2. Performance under Adversarial Attack
+When adversarial attacks (Data Poisoning/Model Poisoning) are introduced, the model's performance can degrade if not defended against.
+
+<p float="left">
+  <img src="images/attack_1.png" width="45%" />
+  <img src="images/attack_2.png" width="45%" /> 
+</p>
+
+
 
 
 ## �📊 Dataset Info

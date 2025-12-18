@@ -16,7 +16,8 @@ import numpy as np
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import f1_score
-from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import SMOTE, RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
 from sklearn.utils.class_weight import compute_class_weight
 
 # Import your model definition
@@ -160,40 +161,77 @@ class FLClient(fl.client.NumPyClient):
              
              pass # Standard client logic below
         
-        # Standard SMOTE Logic
+        print(f"\n[Client {self.cid}] Preparing Data (Hybrid Balancing)...")
+        
+        # ---------------- HYBRID STRATEGY (Ported from client_attack.py) ----------------
         try:
-            unique_cls, counts = np.unique(self.y_train, return_counts=True)
-            min_samples = np.min(counts)
-            if min_samples > 1:
-                k = min(5, min_samples - 1)
-                # Custom Strategy: Cap upsampling at 5000 to avoid excessive noise from rare classes (e.g. 3 -> 100k)
-                TARGET_COUNT = 5000
-                sampling_strategy = {}
-                for cls, count in zip(unique_cls, counts):
-                    if count < TARGET_COUNT:
-                        sampling_strategy[cls] = TARGET_COUNT
-                    # Else (e.g. Benign has 100k): Do nothing, keep original count
+            # Current data
+            X_curr, y_curr = self.X_train, self.y_train
+            unique_cls, counts = np.unique(y_curr, return_counts=True)
+            dist = dict(zip(unique_cls, counts))
+            
+            # 1. DOWNSAMPLE BENIGN (Index 0 usually, but check encoder)
+            # Find Benign index if possible, else assume largest class or 0
+            benign_idx = 0
+            if self.global_le and 'Benign' in self.global_le.classes_:
+                benign_idx = int(self.global_le.transform(['Benign'])[0])
+            elif 0 in dist and dist[0] == max(dist.values()):
+                benign_idx = 0 # Fallback assumption
                 
-                # Only run SMOTE if we actually have classes to upsample
-                if sampling_strategy:
-                    sm = SMOTE(sampling_strategy=sampling_strategy, k_neighbors=k, random_state=42)
-                    X_res, y_res = sm.fit_resample(self.X_train, self.y_train)
-                    print(f"[Client {self.cid}] ✅ SMOTE Applied (Capped at {TARGET_COUNT}). Size: {len(self.X_train)} -> {len(X_res)}")
-                    self.X_train_final, self.y_train_final = X_res, y_res
-                else:
-                    print(f"[Client {self.cid}] ℹ️ SMOTE skipped (All classes > {TARGET_COUNT})")
+            BENIGN_CAP = 50000
+            benign_count = dist.get(benign_idx, 0)
+            
+            if benign_count > BENIGN_CAP:
+                print(f"[Client {self.cid}] 📉 Downsampling Benign from {benign_count} to {BENIGN_CAP}...")
+                rus = RandomUnderSampler(sampling_strategy={benign_idx: BENIGN_CAP}, random_state=42)
+                X_curr, y_curr = rus.fit_resample(X_curr, y_curr)
+                # Update counts
+                unique_cls, counts = np.unique(y_curr, return_counts=True)
+                dist = dict(zip(unique_cls, counts))
+
+            # 2. BOOTSTRAP TINY CLASSES (Count < 6)
+            TINY_THRESHOLD = 6
+            SAFE_MARGIN = 20
+            ros_strategy = {}
+            for cls, count in dist.items():
+                if count < TINY_THRESHOLD:
+                    ros_strategy[cls] = SAFE_MARGIN
+            
+            if ros_strategy:
+                print(f"[Client {self.cid}] 🆙 Bootstrapping tiny classes: {list(ros_strategy.keys())}")
+                ros = RandomOverSampler(sampling_strategy=ros_strategy, random_state=42)
+                X_curr, y_curr = ros.fit_resample(X_curr, y_curr)
+                # Update counts
+                unique_cls, counts = np.unique(y_curr, return_counts=True)
+                dist = dict(zip(unique_cls, counts))
                 
-                # PLOT AFTER SMOTE
-                save_class_distribution_plot(
-                    y_res, 
-                    f"Client {self.cid} - Distribution AFTER SMOTE", 
-                    f"client_{self.cid}_dist_after_smote.png", 
-                    self.global_le
-                )
-            else:
-                 print(f"[Client {self.cid}] ⚠️ Skipping SMOTE (Class too small).")
+            # 3. SMOTE
+            TARGET_COUNT = 10000
+            smote_strategy = {}
+            for cls, count in dist.items():
+                if cls == benign_idx: continue
+                if count < TARGET_COUNT:
+                    smote_strategy[cls] = TARGET_COUNT
+            
+            if smote_strategy:
+                print(f"[Client {self.cid}] 🧬 Applying SMOTE to minority classes...")
+                sm = SMOTE(sampling_strategy=smote_strategy, k_neighbors=5, random_state=42)
+                X_curr, y_curr = sm.fit_resample(X_curr, y_curr)
+            
+            self.X_train_final, self.y_train_final = X_curr, y_curr
+            print(f"[Client {self.cid}] ✅ Hybrid Balancing Complete. Final Size: {len(self.X_train_final)}")
+            
+            # PLOT AFTER BALANCING
+            save_class_distribution_plot(
+                self.y_train_final, 
+                f"Client {self.cid} - Distribution AFTER Hybrid", 
+                f"client_{self.cid}_dist_after_hybrid.png", 
+                self.global_le
+            )
+
         except Exception as e:
-            print(f"[Client {self.cid}] ⚠️ SMOTE Failed: {e}")
+            print(f"[Client {self.cid}] ⚠️ Balancing Failed: {e}")
+            self.X_train_final, self.y_train_final = self.X_train, self.y_train
 
         # Class Weights
             # Only use class weights if SMOTE was NOT applied or failed
@@ -238,20 +276,69 @@ class FLClient(fl.client.NumPyClient):
         from sklearn.utils import shuffle
         self.X_train_final, self.y_train_final = shuffle(self.X_train_final, self.y_train_final, random_state=42)
 
-        history = self.model.fit(
-            self.X_train_final, self.y_train_final,
-            epochs=3, # Reduced from 10 to prevent overfitting
-            batch_size=self.batch_size,
-            validation_data=(self.X_test, self.y_test), # Validate on REAL test data, not SMOTE split
-            verbose=1,
-            class_weight=self.class_weight_dict
-        )
+        # --- FedProx Aware Training Loop ---
+        proximal_mu = float(config.get("proximal_mu", 0.0))
         
-        loss = history.history['loss'][-1]
-        # Check accuracy if available
-        acc = history.history['accuracy'][-1] if 'accuracy' in history.history else 0.0
-        
-        print(f"[Client {self.cid}] Round complete. Loss: {loss:.4f} | Acc: {acc:.4f}")
+        if proximal_mu > 0.0:
+            print(f"[Client {self.cid}] 🦅 Training with FedProx (mu={proximal_mu})")
+            
+            # Snapshot trainable variables to match gradients
+            global_trainable_weights = [tf.identity(v) for v in self.model.trainable_variables]
+            
+            # Prepare dataset
+            dataset = tf.data.Dataset.from_tensor_slices((self.X_train_final, self.y_train_final))
+            dataset = dataset.shuffle(buffer_size=1024).batch(self.batch_size)
+            
+            loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
+            optimizer = self.model.optimizer
+
+            @tf.function
+            def train_step(data, labels, global_w):
+                with tf.GradientTape() as tape:
+                    predictions = self.model(data, training=True)
+                    loss_value = loss_fn(labels, predictions)
+                    
+                    proximal_term = 0.0
+                    for local_var, global_var in zip(self.model.trainable_variables, global_w):
+                        proximal_term += tf.reduce_sum(tf.square(local_var - global_var))
+                        
+                    total_loss = loss_value + (proximal_mu / 2.0) * proximal_term
+                    
+                grads = tape.gradient(total_loss, self.model.trainable_variables)
+                optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
+                return total_loss
+
+            total_loss_final = 0.0
+            print(f"[Client {self.cid}] ⏳ Starting training (Graph Mode)...")
+            
+            for epoch in range(3): # Epochs matches standard fit below
+                epoch_loss = 0.0
+                num_batches = 0
+                for batch_X, batch_y in dataset:
+                    loss = train_step(batch_X, batch_y, global_trainable_weights)
+                    epoch_loss += loss
+                    num_batches += 1
+                
+                if num_batches > 0:
+                    total_loss_final = float(epoch_loss / num_batches)
+            
+            print(f"[Client {self.cid}] ✅ FedProx Training Complete. Last Loss: {total_loss_final:.4f}")
+            loss = total_loss_final
+            acc = 0.0 # Can't easily get acc from custom loop without extra compute
+            
+        else:
+            # Standard FedAvg / Local Training
+            history = self.model.fit(
+                self.X_train_final, self.y_train_final,
+                epochs=3, 
+                batch_size=self.batch_size,
+                validation_data=(self.X_test, self.y_test), 
+                verbose=1,
+                class_weight=self.class_weight_dict
+            )
+            loss = history.history['loss'][-1]
+            acc = history.history['accuracy'][-1] if 'accuracy' in history.history else 0.0
+            print(f"[Client {self.cid}] Round complete. Loss: {loss:.4f} | Acc: {acc:.4f}")
         
         # --- SANITY CHECK: Local Generalization ---
         # Evaluate "Just Trained" model on Local Test Set

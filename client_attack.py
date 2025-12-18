@@ -6,7 +6,8 @@ import numpy as np
 import flwr as fl
 import tensorflow as tf
 from sklearn.preprocessing import LabelEncoder
-from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import SMOTE, RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
 
 import matplotlib
 matplotlib.use("Agg")
@@ -62,35 +63,73 @@ class MaliciousClient(fl.client.NumPyClient):
         self.X_train_final, self.y_train_final = self.X_train, self.y_train
         self.class_weight_dict = None
 
-        print(f"\n[Client {self.cid}] Preparing Data (SMOTE)...")
-        # Standard SMOTE Logic (Adapted from client.py)
+        print(f"\n[Client {self.cid}] Preparing Data (Hybrid Balancing)...")
+        
+        # ---------------- HYBRID STRATEGY ----------------
         try:
-            unique_cls, counts = np.unique(self.y_train, return_counts=True)
-            min_samples = np.min(counts)
+            # Current data
+            X_curr, y_curr = self.X_train, self.y_train
+            unique_cls, counts = np.unique(y_curr, return_counts=True)
+            dist = dict(zip(unique_cls, counts))
             
-            # Only apply if we have enough samples (k_neighbors=5 requires >=6)
-            if min_samples > 5:
-                # Custom Strategy: Cap upsampling at 5000
-                TARGET_COUNT = 5000
-                sampling_strategy = {}
-                for cls, count in zip(unique_cls, counts):
-                    if count < TARGET_COUNT:
-                        sampling_strategy[cls] = TARGET_COUNT
-                    # Else (e.g. Benign has 100k): Do nothing
+            # 1. DOWNSAMPLE BENIGN (Index 0 usually, but we have self.benign_class_idx)
+            # Cap at 50,000 (5:1 Ratio with attacks: 50k vs 10k)
+            BENIGN_CAP = 50000
+            benign_count = dist.get(self.benign_class_idx, 0)
+            
+            if benign_count > BENIGN_CAP:
+                print(f"[Client {self.cid}] 📉 Downsampling Benign from {benign_count} to {BENIGN_CAP}...")
+                rus = RandomUnderSampler(sampling_strategy={self.benign_class_idx: BENIGN_CAP}, random_state=42)
+                X_curr, y_curr = rus.fit_resample(X_curr, y_curr)
+                # Update counts
+                unique_cls, counts = np.unique(y_curr, return_counts=True)
+                dist = dict(zip(unique_cls, counts))
+
+            # 2. BOOTSTRAP TINY CLASSES (Count < 6)
+            # SMOTE failes if neighbors < 6. RandomOverSampler to safe margin (e.g. 20)
+            TINY_THRESHOLD = 6
+            SAFE_MARGIN = 20
+            ros_strategy = {}
+            for cls, count in dist.items():
+                if count < TINY_THRESHOLD:
+                    ros_strategy[cls] = SAFE_MARGIN
+            
+            if ros_strategy:
+                print(f"[Client {self.cid}] 🆙 Bootstrapping tiny classes: {list(ros_strategy.keys())}")
+                ros = RandomOverSampler(sampling_strategy=ros_strategy, random_state=42)
+                X_curr, y_curr = ros.fit_resample(X_curr, y_curr)
+                # Update counts
+                unique_cls, counts = np.unique(y_curr, return_counts=True)
+                dist = dict(zip(unique_cls, counts))
                 
-                # Only run SMOTE if we actually have classes to upsample
-                if sampling_strategy:
-                    sm = SMOTE(sampling_strategy=sampling_strategy, k_neighbors=5, random_state=42)
-                    X_res, y_res = sm.fit_resample(self.X_train, self.y_train)
-                    print(f"[Client {self.cid}] ✅ SMOTE Applied. Size: {len(self.X_train)} -> {len(X_res)}")
-                    self.X_train_final, self.y_train_final = X_res, y_res
-                else:
-                    print(f"[Client {self.cid}] ℹ️ SMOTE skipped (All relevant classes > {TARGET_COUNT})")
-            else:
-                 print(f"[Client {self.cid}] ⚠️ Skipping SMOTE (Classes too small per client: min={min_samples}).")
-                 
+            # 3. SMOTE
+            # Upsample everything else to TARGET_COUNT (10,000)
+            TARGET_COUNT = 10000
+            smote_strategy = {}
+            for cls, count in dist.items():
+                # Don't touch Benign (it's already handled or large)
+                if cls == self.benign_class_idx:
+                    continue
+                # If smaller than target, boost it
+                if count < TARGET_COUNT:
+                    smote_strategy[cls] = TARGET_COUNT
+            
+            if smote_strategy:
+                print(f"[Client {self.cid}] 🧬 Applying SMOTE to minority classes...")
+                sm = SMOTE(sampling_strategy=smote_strategy, k_neighbors=5, random_state=42)
+                X_curr, y_curr = sm.fit_resample(X_curr, y_curr)
+            
+            self.X_train_final, self.y_train_final = X_curr, y_curr
+            print(f"[Client {self.cid}] ✅ Hybrid Balancing Complete. Final Size: {len(self.X_train_final)}")
+            
+            # Print new distribution
+            unique, counts = np.unique(self.y_train_final, return_counts=True)
+            print(f"[Client {self.cid}] New Distribution: {dict(zip(unique, counts))}")
+
         except Exception as e:
-            print(f"[Client {self.cid}] ⚠️ SMOTE Failed: {e}")
+            print(f"[Client {self.cid}] ⚠️ Balancing Failed: {e}")
+            # Fallback
+            self.X_train_final, self.y_train_final = self.X_train, self.y_train
 
         # Class Weights (Fallback if SMOTE skipped or failed)
         if len(self.X_train_final) == len(self.X_train): 
