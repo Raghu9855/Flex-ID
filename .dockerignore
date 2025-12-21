@@ -8,8 +8,9 @@ venv
 ml-env
 __pycache__
 *.pyc
-results/*.png
-results/*.json
-results/*.pkl
-data/*.pkl
+# results/*.png (Uncomment if you want to exclude plots)
+
+# results/*.json
+# results/*.pkl
+# data/*.pkl
 # Keep data/processed_data.csv if you want it included, or exclude if huge
