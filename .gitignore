@@ -21,6 +21,8 @@ data/
 # Generated Logs, Models, and Plots
 *.png
 results/
+!frontend/public/results/
+!frontend/public/images/
 fedavgeachround/
 fedavgresult/
 fedprox/

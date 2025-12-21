@@ -1,0 +1,30 @@
+Federated Learning Data Partition Report
+======================================
+
+Client 0:
+  - Total Samples: 208430
+  - Train Set: 166744
+  - Test Set: 41686
+  - Label Distribution: Benign: 132787, Brute Force -Web: 23, Brute Force -XSS: 5, DDOS attack-HOIC: 27649, DDOS attack-LOIC-UDP: 74, DoS attacks-GoldenEye: 1652, DoS attacks-Hulk: 18480, DoS attacks-SlowHTTPTest: 5538, DoS attacks-Slowloris: 449, FTP-BruteForce: 7716, Infilteration: 6411, SQL Injection: 7, SSH-Bruteforce: 7639
+------------------------------
+
+Client 1:
+  - Total Samples: 170608
+  - Train Set: 136486
+  - Test Set: 34122
+  - Label Distribution: Benign: 132786, Brute Force -Web: 10, Brute Force -XSS: 6, DDOS attack-HOIC: 13738, DDOS attack-LOIC-UDP: 32, DoS attacks-GoldenEye: 884, DoS attacks-Hulk: 9243, DoS attacks-SlowHTTPTest: 2837, DoS attacks-Slowloris: 193, FTP-BruteForce: 3959, Infilteration: 3186, SQL Injection: 1, SSH-Bruteforce: 3733
+------------------------------
+
+Client 2:
+  - Total Samples: 170608
+  - Train Set: 136486
+  - Test Set: 34122
+  - Label Distribution: Benign: 132786, Brute Force -Web: 14, Brute Force -XSS: 6, DDOS attack-HOIC: 13685, DDOS attack-LOIC-UDP: 40, DoS attacks-GoldenEye: 831, DoS attacks-Hulk: 9238, DoS attacks-SlowHTTPTest: 2851, DoS attacks-Slowloris: 245, FTP-BruteForce: 3947, Infilteration: 3239, SQL Injection: 3, SSH-Bruteforce: 3723
+------------------------------
+
+Client 3:
+  - Total Samples: 170607
+  - Train Set: 136485
+  - Test Set: 34122
+  - Label Distribution: Benign: 132786, Brute Force -Web: 10, Brute Force -XSS: 4, DDOS attack-HOIC: 13782, DDOS attack-LOIC-UDP: 29, DoS attacks-GoldenEye: 787, DoS attacks-Hulk: 9201, DoS attacks-SlowHTTPTest: 2796, DoS attacks-Slowloris: 239, FTP-BruteForce: 3835, Infilteration: 3242, SQL Injection: 3, SSH-Bruteforce: 3893
+------------------------------

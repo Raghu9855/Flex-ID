@@ -1,0 +1,34 @@
+{
+    "fedavg": {
+        "best_accuracy": "89.32%",
+        "best_f1": "0.6085",
+        "last_accuracy": "89.32%",
+        "last_loss": "0.3344",
+        "last_f1": "0.5692",
+        "rounds": 10
+    },
+    "fedprox": {
+        "best_accuracy": "92.13%",
+        "best_f1": "0.5970",
+        "last_accuracy": "92.13%",
+        "last_loss": "0.4024",
+        "last_f1": "0.5970",
+        "rounds": 10
+    },
+    "fedavg_attack": {
+        "best_accuracy": "84.95%",
+        "best_f1": "0.2885",
+        "last_accuracy": "73.73%",
+        "last_loss": "0.3511",
+        "last_f1": "0.0797",
+        "rounds": 10
+    },
+    "fedprox_attack": {
+        "best_accuracy": "89.57%",
+        "best_f1": "0.5611",
+        "last_accuracy": "88.88%",
+        "last_loss": "0.4301",
+        "last_f1": "0.5303",
+        "rounds": 10
+    }
+}
