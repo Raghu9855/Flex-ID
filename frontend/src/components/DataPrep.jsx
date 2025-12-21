@@ -265,7 +265,7 @@ export default function DataPrep() {
                                         <h4 className="text-lg font-bold text-white mb-1">Partition #{client.id}</h4>
                                         <p className="text-xs text-slate-400 mb-4">{client.name} Isolated Data</p>
                                         <a
-                                            href={`/images/client_partition_${client.id}.pkl`}
+                                            href={`/data/client_partition_${client.id}.pkl`}
                                             download={`client_partition_${client.id}.pkl`}
                                             className="flex items-center justify-center gap-2 w-full py-2 bg-white/5 hover:bg-emerald-500 text-slate-300 hover:text-white rounded-lg text-sm font-medium transition-all group-hover:translate-y-0"
                                         >
