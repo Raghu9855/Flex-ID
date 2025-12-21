@@ -7,6 +7,8 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 
+const PROJECT_ROOT = path.join(__dirname, '..'); // Assuming backend is inside 7SemProject/backend
+
 // Configure Multer to save uploaded file as 'combined_ids2018_raw.csv'
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -45,7 +47,6 @@ const io = new Server(server, {
 });
 
 const PORT = 5000;
-const PROJECT_ROOT = path.join(__dirname, '..'); // Assuming backend is inside 7SemProject/backend
 
 // Store running processes to manage lifecycles
 // key: type (e.g., 'server', 'client-0'), value: process object
