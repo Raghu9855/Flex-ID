@@ -24,19 +24,51 @@ except ImportError:
 
 # --- HELPERS ---
 def load_partition(cid: int):
-    filename = f"client_partition_{cid}.pkl"
+    """Load a client's data partition from the data/ subfolder."""
+    filename = f"data/client_partition_{cid}.pkl"
+    if not os.path.exists(filename):
+        raise FileNotFoundError(f"Partition file not found: {filename}. Run 2_create_partitions.py first.")
     with open(filename, "rb") as f:
         return pickle.load(f)
 
 # --- MALICIOUS CLIENT ---
 class MaliciousClient(fl.client.NumPyClient):
-    def __init__(self, cid, attack_type="none", scale=1.0, batch_size=32, fast_run=False):
+    def __init__(self, cid, attack_type="none", scale=1.0, batch_size=32, fast_run=False,
+                 trigger_feature_idx=0, trigger_value=999.0):
+        """
+        Malicious federated learning client supporting five attack types:
+
+        - "none"      : Honest client (no attack).
+        - "flip"      : Data poisoning via label flipping. Flips `scale * 100%` of
+                        training labels to the Benign class, causing the global model
+                        to under-detect attacks.
+        - "noise"     : Model poisoning via Gaussian weight perturbation. Injects
+                        Gaussian noise (std = scale) into the trained model weights
+                        before sending them to the server.
+        - "backdoor"  : Targeted data poisoning. Stamps a fixed trigger
+                        (feature[trigger_feature_idx] = trigger_value) onto
+                        `scale * 100%` of training samples and flips their label to
+                        Benign. At inference, any traffic with the trigger is
+                        misclassified as benign while the model behaves normally
+                        on clean data.
+        - "byzantine": Model replacement / scaling attack. Multiplies the locally
+                        trained weight update by `scale` before submission, aiming
+                        to dominate the FedAvg aggregate and steer the global model
+                        toward the attacker's objective.
+        - "adaptive"  : Constrain-and-scale adaptive poisoning. Performs gradient
+                        ascent on the cross-entropy loss for `scale * 10` extra
+                        steps after normal training, then clips the weight update
+                        to the L2-norm of an honest update so the attack stays
+                        within typical model-update bounds (stealthy).
+        """
         self.cid = cid
         self.attack_type = attack_type
         self.scale = scale
         self.batch_size = batch_size
         self.fast_run = fast_run
-        
+        self.trigger_feature_idx = trigger_feature_idx   # Feature column used as backdoor trigger
+        self.trigger_value = trigger_value               # Value stamped on that feature
+
         print(f"--- Client {cid} Initializing [Attack: {self.attack_type}, Scale: {self.scale}, Batch: {self.batch_size}] ---")
 
         # 1. Load Data
@@ -63,11 +95,11 @@ class MaliciousClient(fl.client.NumPyClient):
         self.num_classes = 0
         self.benign_class_idx = 0 
         
-        if os.path.exists("label_encoder.pkl"):
-            with open("label_encoder.pkl", "rb") as f:
+        if os.path.exists("data/label_encoder.pkl"):
+            with open("data/label_encoder.pkl", "rb") as f:
                 le = pickle.load(f)
             self.num_classes = len(le.classes_)
-            
+
             # Find which integer represents 'Benign'
             if 'Benign' in le.classes_:
                 self.benign_class_idx = int(le.transform(['Benign'])[0])
@@ -173,103 +205,191 @@ class MaliciousClient(fl.client.NumPyClient):
 
     def fit(self, parameters, config):
         self.model.set_weights(parameters)
-        
-        # Use prepared data
-        X_train_final, y_train_final = self.X_train_final, self.y_train_final
 
-        # --- ATTACK 1: DATA POISONING (Label Flipping) ---
+        # Work on copies so the original buffers are not permanently mutated
+        X_train_final = self.X_train_final.copy()
+        y_train_final = self.y_train_final.copy()
+
+        # ------------------------------------------------------------------
+        # ATTACK 1: DATA POISONING — Label Flipping
+        # Flip `scale * 100%` of training labels to the Benign class so the
+        # global model learns to misclassify attacks as benign traffic.
+        # ------------------------------------------------------------------
         if self.attack_type == "flip":
-            print(f"[Client {self.cid}] Executing Label Flipping Attack...")
-            # Flip a portion of labels based on scale (scale=1.0 means 100% flip)
+            print(f"[Client {self.cid}] [Attack] Executing Label Flipping Attack...")
             num_samples = len(y_train_final)
             num_flip = int(num_samples * min(self.scale, 1.0))
-            
             indices = np.random.choice(num_samples, num_flip, replace=False)
             y_train_final[indices] = self.benign_class_idx
-            print(f"[Client {self.cid}] Flipped {num_flip}/{num_samples} labels to Class {self.benign_class_idx} (Benign).")
-            
-        else:
-            # Normal behavior or partial benign behavior needed for other attacks?
-            # For Model Poisoning, we train normally FIRST, then poison weights.
-            pass
+            print(f"[Client {self.cid}] Flipped {num_flip}/{num_samples} labels -> Class {self.benign_class_idx} (Benign).")
 
-        # Custom FedProx Training Loop or Standard Fit
+        # ------------------------------------------------------------------
+        # ATTACK 2: DATA POISONING — Backdoor (Trigger Injection)
+        # Stamp a fixed trigger pattern onto `scale * 100%` of training
+        # samples and mislabel them as Benign. After aggregation, any
+        # inference sample carrying the trigger will be silently passed as
+        # benign while the model performs normally on clean traffic.
+        #
+        # Trigger design: set feature[trigger_feature_idx] = trigger_value
+        # (a statistically anomalous value, e.g., 999.0 for a 0-1 feature).
+        # ------------------------------------------------------------------
+        elif self.attack_type == "backdoor":
+            print(f"[Client {self.cid}] [Attack] Executing Backdoor (Trigger Injection) Attack...")
+            num_samples = len(y_train_final)
+            num_poison = int(num_samples * min(self.scale, 1.0))
+            # Only poison samples that are NOT already Benign
+            attack_indices = np.where(y_train_final != self.benign_class_idx)[0]
+            if len(attack_indices) == 0:
+                attack_indices = np.arange(num_samples)   # Fallback: poison any sample
+            chosen = np.random.choice(attack_indices,
+                                      min(num_poison, len(attack_indices)),
+                                      replace=False)
+            X_train_final[chosen, self.trigger_feature_idx] = self.trigger_value
+            y_train_final[chosen] = self.benign_class_idx
+            print(f"[Client {self.cid}] Backdoor: poisoned {len(chosen)} samples "
+                  f"(feature[{self.trigger_feature_idx}]={self.trigger_value} -> Benign).")
+
+        # All other attacks train normally first; weight manipulation happens AFTER training.
+
+        # ------------------------------------------------------------------
+        # LOCAL TRAINING (shared by all attack types)
+        # ------------------------------------------------------------------
         proximal_mu = float(config.get("proximal_mu", 0.0))
-        
+
         if proximal_mu > 0.0:
+            # ---- FedProx custom training loop ----
             print(f"[Client {self.cid}] Training with FedProx (mu={proximal_mu})")
-            
-            # Fix for Shape Mismatch: 
-            # 'parameters' contains ALL weights (including non-trainable BN stats).
-            # 'trainable_variables' contains ONLY trainable weights.
-            # Directly zipping them causes misalignment. 
-            # Since we just called set_weights(parameters), the model's current trainable_variables ARE the global weights.
             global_trainable_weights = [tf.identity(v) for v in self.model.trainable_variables]
-            
-            # Prepare dataset
-            batch_size = self.batch_size
-            epochs = 5
+
             dataset = tf.data.Dataset.from_tensor_slices((X_train_final, y_train_final))
-            dataset = dataset.shuffle(buffer_size=1024).batch(batch_size)
-            
+            dataset = dataset.shuffle(buffer_size=1024).batch(self.batch_size)
+
             loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
             optimizer = self.model.optimizer
 
-            # Optimization: Use tf.function for graph execution (Much faster)
             @tf.function
             def train_step(data, labels, global_w):
                 with tf.GradientTape() as tape:
                     predictions = self.model(data, training=True)
                     loss_value = loss_fn(labels, predictions)
-                    
-                    proximal_term = 0.0
-                    for local_var, global_var in zip(self.model.trainable_variables, global_w):
-                        proximal_term += tf.reduce_sum(tf.square(local_var - global_var))
-                        
+                    proximal_term = tf.add_n([
+                        tf.reduce_sum(tf.square(lv - gv))
+                        for lv, gv in zip(self.model.trainable_variables, global_w)
+                    ])
                     total_loss = loss_value + (proximal_mu / 2.0) * proximal_term
-                    
                 grads = tape.gradient(total_loss, self.model.trainable_variables)
                 optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
                 return total_loss
 
-            print(f"[Client {self.cid}] Starting training (Graph Mode)...")
-            for epoch in range(epochs):
+            print(f"[Client {self.cid}] Starting FedProx training (Graph Mode)...")
+            for epoch in range(5):
                 epoch_loss = 0.0
                 num_batches = 0
                 for batch_X, batch_y in dataset:
                     loss = train_step(batch_X, batch_y, global_trainable_weights)
                     epoch_loss += loss
                     num_batches += 1
-                
-                # Optional: Print progress per epoch to show it's alive
-                # print(f"Epoch {epoch+1}/{epochs}, Loss: {epoch_loss/num_batches:.4f}")
-            print(f"[Client {self.cid}] Training Complete.")
-                
-                # Optional: print epoch loss?
-                # print(f"Epoch {epoch+1}/{epochs} loss: {total_loss.numpy():.4f}")
-                
+            print(f"[Client {self.cid}] FedProx Training Complete.")
+
         else:
-            # Standard Local Training
-            # Pass class_weight if available (only works if not SMOTE-ed)
+            # ---- Standard FedAvg local training ----
             self.model.fit(
-                X_train_final, y_train_final, 
-                epochs=5, batch_size=32, verbose=2,
+                X_train_final, y_train_final,
+                epochs=5, batch_size=self.batch_size, verbose=2,
                 class_weight=self.class_weight_dict
             )
-        
-        # --- ATTACK 2: MODEL POISONING (Noise Injection) ---
+
+        # ------------------------------------------------------------------
+        # WEIGHT-LEVEL ATTACKS (applied after local training)
+        # ------------------------------------------------------------------
         final_weights = self.model.get_weights()
-        
+
+        # ------------------------------------------------------------------
+        # ATTACK 3: MODEL POISONING — Gaussian Noise Injection
+        # Add zero-mean Gaussian noise (std = scale) to every weight tensor.
+        # Degrades model quality proportional to scale; easily detected by
+        # norm-bounding defences at large scale values.
+        # ------------------------------------------------------------------
         if self.attack_type == "noise":
-            print(f"[Client {self.cid}] Executing Model Poisoning (Noise) Attack...")
-            poisoned_weights = []
-            for w in final_weights:
-                # Add Gaussian noise
-                noise = np.random.normal(0, self.scale, w.shape)
-                poisoned_weights.append(w + noise)
-            
-            final_weights = poisoned_weights
-            print(f"[Client {self.cid}] Added Gaussian Noise (std={self.scale}) to weights.")
+            print(f"[Client {self.cid}] [Attack] Executing Gaussian Noise Injection (std={self.scale})...")
+            final_weights = [w + np.random.normal(0, self.scale, w.shape)
+                             for w in final_weights]
+            print(f"[Client {self.cid}] Noise injected into {len(final_weights)} weight tensors.")
+
+        # ------------------------------------------------------------------
+        # ATTACK 4: MODEL REPLACEMENT — Byzantine / Scaling Attack
+        # The attacker multiplies its weight *update* (delta from the global
+        # model) by `scale` before submission. A large scale factor causes
+        # the attacker's update to dominate the FedAvg aggregate, effectively
+        # steering the global model toward the attacker's objective.
+        #
+        # delta_i = w_local - w_global
+        # submitted = w_global + scale * delta_i
+        # ------------------------------------------------------------------
+        elif self.attack_type == "byzantine":
+            print(f"[Client {self.cid}] [Attack] Executing Byzantine / Model Replacement Attack (scale={self.scale})...")
+            global_weights = parameters   # original global weights received at round start
+            amplified_weights = []
+            for w_local, w_global in zip(final_weights, global_weights):
+                delta = w_local - w_global
+                amplified_weights.append(w_global + self.scale * delta)
+            final_weights = amplified_weights
+            print(f"[Client {self.cid}] Update delta amplified by x{self.scale}.")
+
+        # ------------------------------------------------------------------
+        # ATTACK 5: ADAPTIVE POISONING — Constrain-and-Scale
+        # Extends the local update with a few extra gradient-ascent steps on
+        # the cross-entropy loss (maximising classification error). The final
+        # update is then clipped to the L2-norm of an honest update so it
+        # stays within typical update bounds and evades norm-based defences.
+        #
+        # Reference: Bagdasaryan et al., "How To Backdoor Federated Learning"
+        #            (AISTATS 2020) — constrain-and-scale framework.
+        # ------------------------------------------------------------------
+        elif self.attack_type == "adaptive":
+            print(f"[Client {self.cid}] [Attack] Executing Adaptive Poisoning (Constrain-and-Scale)...")
+            extra_steps = max(1, int(self.scale * 10))  # e.g. scale=1.0 -> 10 ascent steps
+
+            # Compute honest update norm for the clipping bound
+            global_weights = parameters
+            honest_deltas = [w_local - w_global
+                             for w_local, w_global in zip(final_weights, global_weights)]
+            honest_norm = float(np.sqrt(sum(
+                np.sum(d ** 2) for d in honest_deltas
+            )))
+
+            # Gradient ASCENT: maximise cross-entropy to corrupt the global model
+            loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
+            optimizer_adv = tf.keras.optimizers.Adam(learning_rate=1e-4)
+            adv_dataset = (
+                tf.data.Dataset.from_tensor_slices((X_train_final, y_train_final))
+                .shuffle(1024).batch(self.batch_size).take(extra_steps)
+            )
+            for batch_X, batch_y in adv_dataset:
+                with tf.GradientTape() as tape:
+                    preds = self.model(batch_X, training=True)
+                    # Negative loss = gradient ASCENT
+                    loss_val = -loss_fn(batch_y, preds)
+                grads = tape.gradient(loss_val, self.model.trainable_variables)
+                optimizer_adv.apply_gradients(
+                    zip(grads, self.model.trainable_variables)
+                )
+
+            adv_weights = self.model.get_weights()
+            adv_deltas = [w_adv - w_global
+                          for w_adv, w_global in zip(adv_weights, global_weights)]
+            adv_norm = float(np.sqrt(sum(np.sum(d ** 2) for d in adv_deltas)))
+
+            # Clip adversarial update to honest norm (stealthiness constraint)
+            if adv_norm > honest_norm and adv_norm > 0:
+                clip_ratio = honest_norm / adv_norm
+                adv_deltas = [d * clip_ratio for d in adv_deltas]
+                print(f"[Client {self.cid}] Adaptive: clipped update norm "
+                      f"{adv_norm:.4f} -> {honest_norm:.4f} (ratio={clip_ratio:.4f}).")
+
+            final_weights = [w_global + d
+                             for w_global, d in zip(global_weights, adv_deltas)]
+            print(f"[Client {self.cid}] Adaptive poisoning complete ({extra_steps} ascent steps).")
 
         return final_weights, len(X_train_final), {}
 
@@ -285,22 +405,59 @@ class MaliciousClient(fl.client.NumPyClient):
         return float(loss), len(self.y_test), {"accuracy": float(acc), "f1": float(f1)}
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--cid", type=int, required=True)
-    parser.add_argument("--attack_type", type=str, default="none", choices=["none", "flip", "noise"], help="Type of attack")
-    parser.add_argument("--scale", type=float, default=1.0, help="Intensity of attack (Flip ratio 0-1, or Noise std dev)")
-    
-    # Updated arguments to match standard client.py
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training")
-    parser.add_argument("--fast_run", action="store_true", help="Use 10% of data for debugging")
-    
+    parser = argparse.ArgumentParser(
+        description="Malicious Federated Learning Client for FLEX-ID adversarial evaluation."
+    )
+    parser.add_argument("--cid", type=int, required=True,
+                        help="Client ID (integer, 0-indexed).")
+    parser.add_argument(
+        "--attack_type", type=str, default="none",
+        choices=["none", "flip", "noise", "backdoor", "byzantine", "adaptive"],
+        help=(
+            "Attack strategy to execute:\n"
+            "  none      - Honest client (no attack).\n"
+            "  flip      - Label flipping: relabels scale*100%% of samples as Benign.\n"
+            "  noise     - Gaussian weight noise: adds N(0, scale) to model weights.\n"
+            "  backdoor  - Trigger injection: stamps a feature trigger and relabels\n"
+            "              scale*100%% of attack samples as Benign.\n"
+            "  byzantine - Model replacement: amplifies weight update delta by scale.\n"
+            "  adaptive  - Constrain-and-scale: gradient ascent then norm clipping."
+        )
+    )
+    parser.add_argument("--scale", type=float, default=1.0,
+                        help=("Attack intensity. Meaning varies by attack_type:\n"
+                              "  flip/backdoor -> fraction of samples to poison (0.0-1.0)\n"
+                              "  noise         -> Gaussian noise std deviation\n"
+                              "  byzantine     -> delta amplification factor\n"
+                              "  adaptive      -> number of gradient ascent steps = scale*10"))
+    parser.add_argument("--batch_size", type=int, default=32,
+                        help="Mini-batch size for local training.")
+    parser.add_argument("--fast_run", action="store_true",
+                        help="Use 10%% of data for quick debugging runs.")
+    # Backdoor-specific parameters
+    parser.add_argument("--trigger_feature_idx", type=int, default=0,
+                        help="Feature column index to use as the backdoor trigger.")
+    parser.add_argument("--trigger_value", type=float, default=999.0,
+                        help="Value stamped onto trigger_feature_idx for backdoor poisoning.")
     # Backward compatibility
-    parser.add_argument("--malicious", action='store_true', help="Legacy flag for flip attack")
-    
+    parser.add_argument("--malicious", action="store_true",
+                        help="Legacy flag — equivalent to --attack_type flip.")
+
     args = parser.parse_args()
 
     # Handle legacy flag
     if args.malicious and args.attack_type == "none":
         args.attack_type = "flip"
 
-    fl.client.start_numpy_client(server_address="127.0.0.1:8080", client=MaliciousClient(args.cid, args.attack_type, args.scale, args.batch_size, args.fast_run))
+    fl.client.start_numpy_client(
+        server_address="127.0.0.1:8080",
+        client=MaliciousClient(
+            cid=args.cid,
+            attack_type=args.attack_type,
+            scale=args.scale,
+            batch_size=args.batch_size,
+            fast_run=args.fast_run,
+            trigger_feature_idx=args.trigger_feature_idx,
+            trigger_value=args.trigger_value,
+        )
+    )

@@ -1,218 +1,372 @@
-import tensorflow as tf
-import pandas as pd
-import numpy as np
-import pickle
-import os
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import confusion_matrix, classification_report
+"""
+compare_results.py — Comprehensive model evaluation for FLEX-ID.
 
-# --- 1. IMPORT YOUR MODEL FUNCTION ---
+Evaluates saved weight files against the global test set and reports:
+  - Accuracy, Balanced Accuracy
+  - Weighted F1, Macro F1
+  - Per-class Precision, Recall, F1
+  - ROC-AUC (one-vs-rest, macro)
+  - PR-AUC (average precision, macro)
+  - Matthews Correlation Coefficient (MCC)
+  - Confusion Matrix (normalised)
+  - Inference Time
+
+Usage
+-----
+    python compare_results.py \\
+        --fedavg  results/fedavgeachround/round-30-weights.pkl \\
+        --fedprox results/fedproxeachround/round-30-weights.pkl \\
+        --mode    no_attack
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import pickle
+import sys
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import tensorflow as tf
+
+from sklearn.metrics import (
+    average_precision_score,
+    balanced_accuracy_score,
+    classification_report,
+    confusion_matrix,
+    matthews_corrcoef,
+    roc_auc_score,
+)
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, label_binarize
+
+sys.stdout.reconfigure(encoding="utf-8")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("flex_id.compare_results")
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+tf.get_logger().setLevel("ERROR")
+
+# ── Reproducibility ────────────────────────────────────────────────────────────
+RANDOM_SEED = 42
+
+try:
+    from utils.seeds import set_global_seeds
+    set_global_seeds(RANDOM_SEED)
+except ImportError:
+    import random
+    random.seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
+    tf.random.set_seed(RANDOM_SEED)
+
 try:
     from model import create_dnn_model
 except ImportError:
-    print("[ERR] Error: model.py not found. Please place it in the same directory.")
-    exit()
+    logger.error("model.py not found.")
+    sys.exit(1)
 
-# --- 2. CONFIGURATION ---
-# UPDATE THESE PATHS TO MATCH YOUR ACTUAL FOLDER STRUCTURE
-# Note: Server saved them in 'fedavgeachround', not 'fedavg'
-# Defaults (Overridden by CLI args)
-# FEDAVG_PATH = "fedavgeachround/round-10-weights.pkl"   
-# FEDPROX_PATH = "fedproxeachround/round-10-weights.pkl"
+# ── Paths ──────────────────────────────────────────────────────────────────────
 DATA_PATH = "data/processed_data.csv"
-LE_PATH = "data/label_encoder.pkl"
+LE_PATH   = "data/label_encoder.pkl"
 
-def load_and_process_data():
-    """
-    Loads data and applies the EXACT same label encoding as training.
-    """
-    print("Loading data from CSV...")
-    if not os.path.exists(DATA_PATH):
-        print(f"[ERR] Error: {DATA_PATH} not found.")
-        exit()
-        
-    df = pd.read_csv(DATA_PATH)
-    
-    # Identify the target column (string labels)
-    string_cols = df.select_dtypes(include=['object']).columns
-    if len(string_cols) == 0:
-        print("[ERR] Error: No string label column found in CSV.")
-        exit()
-        
-    target_col = string_cols[0] 
-    print(f"Target column identified: '{target_col}'")
 
-    # --- CRITICAL FIX: Load existing LabelEncoder ---
-    if os.path.exists(LE_PATH):
-        print(f"[OK] Loading existing LabelEncoder from {LE_PATH}")
-        with open(LE_PATH, 'rb') as f:
-            le = pickle.load(f)
+# ──────────────────────────────────────────────────────────────────────────────
+# Data loading
+# ──────────────────────────────────────────────────────────────────────────────
+
+def load_and_process_data(
+    data_path: str = DATA_PATH,
+    le_path: str = LE_PATH,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Load data, apply saved label encoder, return (X_test, y_test, class_names)."""
+    logger.info("Loading data from '%s' ...", data_path)
+
+    if not os.path.exists(data_path):
+        logger.error("Data file not found: '%s'.", data_path)
+        sys.exit(1)
+
+    df = pd.read_csv(data_path)
+
+    # Identify label column
+    string_cols = df.select_dtypes(include=["object"]).columns.tolist()
+    if not string_cols:
+        # Labels may already be integers
+        label_col = "label" if "label" in df.columns else df.columns[-1]
     else:
-        print("[WARN] Warning: label_encoder.pkl not found. Creating a new one (Risky!).")
-        le = LabelEncoder()
-        le.fit(df[target_col])
+        label_col = string_cols[0]
+    logger.info("Label column: '%s'.", label_col)
 
-    # Transform labels
-    # Handle unseen labels safely
-    try:
-        df[target_col] = le.transform(df[target_col])
-    except ValueError:
-        # If evaluation data has labels the model never saw, filter them out
-        valid_labels = set(le.classes_)
-        df = df[df[target_col].isin(valid_labels)]
-        df[target_col] = le.transform(df[target_col])
+    # Load encoder
+    if os.path.exists(le_path):
+        with open(le_path, "rb") as fh:
+            le: LabelEncoder = pickle.load(fh)
+        try:
+            df[label_col] = le.transform(df[label_col])
+        except ValueError:
+            valid = set(le.classes_)
+            df = df[df[label_col].isin(valid)]
+            df[label_col] = le.transform(df[label_col])
+    else:
+        logger.warning("label_encoder.pkl not found. Creating a new one (risky!).")
+        le = LabelEncoder()
+        df[label_col] = le.fit_transform(df[label_col])
 
     class_names = le.classes_
-    print(f"Classes: {class_names}")
+    logger.info("Classes: %s", list(class_names))
 
-    y = df[target_col].values
-    X = df.drop(columns=[target_col]).values
-    
-    # Split into training and testing (use a fixed seed to match previous logic logic)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    return X_test.astype('float32'), y_test.astype('float32'), class_names
+    y = df[label_col].values.astype(int)
+    X = df.drop(columns=[label_col]).values.astype(np.float32)
 
-def plot_confusion_matrix(model, X_test, y_test, class_names, title="Confusion Matrix", suffix=""):
-    print(f"\n--- Generating {title} ---")
-    
-    y_pred_probs = model.predict(X_test, verbose=0)
-    y_pred = np.argmax(y_pred_probs, axis=1)
-    
-    # Calculate metrics
-    cm = confusion_matrix(y_test, y_pred, normalize='true') # Normalize to show percentages
-    
-    # Plot
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', 
-                xticklabels=class_names, yticklabels=class_names)
-    plt.xlabel('Predicted Label')
-    plt.ylabel('True Label')
-    plt.title(f'{title}\n(Confusion Matrix)')
-    plt.tight_layout()
-    
-    filename = f"results/confusion_matrix_{title.replace(' ', '_').lower()}_{suffix}.png"
-    plt.savefig(filename)
-    print(f"[OK] Saved: {filename}")
-    plt.close()
+    _, X_test, _, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=RANDOM_SEED
+    )
+    return X_test, y_test, class_names
 
-    print("\nClassification Report:")
-    # Use output_dict=False to print string, or True to get data
-    print(classification_report(y_test, y_pred, target_names=[str(c) for c in class_names], zero_division=0))
-    return y_pred
 
-def evaluate_weights(weights_path, X_test, y_test, class_names, algorithm_name, suffix=""):
-    print(f"\n--- Evaluating {algorithm_name} ---")
-    
+# ──────────────────────────────────────────────────────────────────────────────
+# Evaluation
+# ──────────────────────────────────────────────────────────────────────────────
+
+def evaluate_weights(
+    weights_path: str,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    class_names: np.ndarray,
+    algorithm_name: str,
+    suffix: str = "",
+) -> Dict[str, Any]:
+    """Evaluate a saved weight file with the full metric suite."""
+    logger.info("--- Evaluating %s ---", algorithm_name)
+
     if not os.path.exists(weights_path):
-        print(f"[SKIP] Skipped: File not found ({weights_path})")
-        return {"accuracy": 0, "report": None}
+        logger.warning("Weight file not found: '%s'. Skipping.", weights_path)
+        return {"skipped": True}
 
     try:
-        # Load Weights
-        with open(weights_path, 'rb') as f:
-            weights = pickle.load(f)
-            
-        # Recreate Model
-        input_dim = X_test.shape[1]
-        num_classes = len(class_names)
-        
-        model = create_dnn_model(input_shape=input_dim, num_classes=num_classes)
-        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-        
-        # Set Weights
+        with open(weights_path, "rb") as fh:
+            weights = pickle.load(fh)
+
+        model = create_dnn_model(
+            input_shape=X_test.shape[1],
+            num_classes=len(class_names),
+        )
+        model.compile(
+            optimizer="adam",
+            loss="sparse_categorical_crossentropy",
+            metrics=["accuracy"],
+        )
         model.set_weights(weights)
 
-        # Evaluate
+        # ── Basic loss / accuracy ──────────────────────────────────────────────
         loss, accuracy = model.evaluate(X_test, y_test, verbose=0)
-        print(f"[OK] {algorithm_name} Global Accuracy: {accuracy * 100:.2f}%")
-        
-        y_pred = plot_confusion_matrix(model, X_test, y_test, class_names, title=algorithm_name, suffix=suffix)
-        # Get dict for JSON saving
-        report_dict = classification_report(y_test, y_pred, target_names=[str(c) for c in class_names], zero_division=0, output_dict=True)
-        
-        return {"accuracy": accuracy * 100, "report": report_dict}
 
-    except Exception as e:
-        print(f"[ERR] Error during evaluation: {e}")
-        return {"accuracy": 0, "report": None}
+        # ── Inference time ─────────────────────────────────────────────────────
+        t0 = time.perf_counter()
+        y_pred_probs = model.predict(X_test, verbose=0)
+        inference_time_ms = (time.perf_counter() - t0) * 1000.0
 
-# --- MAIN ---
-if __name__ == "__main__":
-    import argparse
-    import json
-    import sys
+        y_pred = np.argmax(y_pred_probs, axis=1)
 
-    # Reduce log noise
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
-    tf.get_logger().setLevel('ERROR')
+        # ── Classification report (per-class P/R/F1) ──────────────────────────
+        report_dict = classification_report(
+            y_test, y_pred,
+            target_names=[str(c) for c in class_names],
+            zero_division=0,
+            output_dict=True,
+        )
+        logger.info("\n%s", classification_report(
+            y_test, y_pred,
+            target_names=[str(c) for c in class_names],
+            zero_division=0,
+        ))
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--fedavg", type=str, required=True, help="Path to FedAvg weights")
-    parser.add_argument("--fedprox", type=str, required=True, help="Path to FedProx weights")
-    parser.add_argument("--mode", type=str, default="custom", help="Mode name for context (no_attack / under_attack)")
+        # ── Balanced accuracy ─────────────────────────────────────────────────
+        balanced_acc = balanced_accuracy_score(y_test, y_pred)
+
+        # ── MCC ──────────────────────────────────────────────────────────────
+        mcc = matthews_corrcoef(y_test, y_pred)
+
+        # ── ROC-AUC (one-vs-rest, macro) ─────────────────────────────────────
+        n_classes = len(class_names)
+        try:
+            if n_classes == 2:
+                roc_auc = roc_auc_score(y_test, y_pred_probs[:, 1])
+            else:
+                y_bin = label_binarize(y_test, classes=list(range(n_classes)))
+                roc_auc = roc_auc_score(y_bin, y_pred_probs, average="macro", multi_class="ovr")
+        except Exception as exc:
+            logger.warning("ROC-AUC computation failed: %s", exc)
+            roc_auc = None
+
+        # ── PR-AUC (average precision, macro) ────────────────────────────────
+        try:
+            if n_classes == 2:
+                pr_auc = average_precision_score(y_test, y_pred_probs[:, 1])
+            else:
+                y_bin = label_binarize(y_test, classes=list(range(n_classes)))
+                pr_auc = average_precision_score(y_bin, y_pred_probs, average="macro")
+        except Exception as exc:
+            logger.warning("PR-AUC computation failed: %s", exc)
+            pr_auc = None
+
+        # ── Confusion matrix plot ─────────────────────────────────────────────
+        _plot_confusion_matrix(
+            y_test, y_pred, class_names,
+            title=algorithm_name, suffix=suffix,
+        )
+
+        result: Dict[str, Any] = {
+            "algorithm": algorithm_name,
+            "weights_path": weights_path,
+            "accuracy":           round(float(accuracy * 100), 4),
+            "balanced_accuracy":  round(float(balanced_acc * 100), 4),
+            "loss":               round(float(loss), 6),
+            "macro_f1":           round(float(report_dict["macro avg"]["f1-score"]), 6),
+            "weighted_f1":        round(float(report_dict["weighted avg"]["f1-score"]), 6),
+            "mcc":                round(float(mcc), 6),
+            "roc_auc_macro":      round(float(roc_auc), 6) if roc_auc is not None else None,
+            "pr_auc_macro":       round(float(pr_auc), 6) if pr_auc is not None else None,
+            "inference_time_ms":  round(inference_time_ms, 2),
+            "num_test_samples":   int(len(y_test)),
+            "per_class_report":   report_dict,
+        }
+
+        logger.info(
+            "[%s] Acc=%.2f%% | Balanced=%.2f%% | MCC=%.4f | ROC-AUC=%s | PR-AUC=%s | "
+            "Inference=%.1f ms",
+            algorithm_name, result["accuracy"], result["balanced_accuracy"],
+            result["mcc"],
+            f"{result['roc_auc_macro']:.4f}" if result["roc_auc_macro"] else "N/A",
+            f"{result['pr_auc_macro']:.4f}" if result["pr_auc_macro"] else "N/A",
+            result["inference_time_ms"],
+        )
+        return result
+
+    except Exception as exc:
+        logger.error("Evaluation failed for %s: %s", algorithm_name, exc, exc_info=True)
+        return {"error": str(exc), "algorithm": algorithm_name}
+
+
+def _plot_confusion_matrix(
+    y_test: np.ndarray,
+    y_pred: np.ndarray,
+    class_names: np.ndarray,
+    title: str,
+    suffix: str,
+) -> None:
+    """Save a normalised confusion matrix heatmap."""
+    os.makedirs("results", exist_ok=True)
+    cm = confusion_matrix(y_test, y_pred, normalize="true")
+    plt.figure(figsize=(max(8, len(class_names)), max(6, len(class_names) - 1)))
+    sns.heatmap(
+        cm, annot=True, fmt=".2f", cmap="Blues",
+        xticklabels=class_names, yticklabels=class_names,
+    )
+    plt.xlabel("Predicted", fontsize=12)
+    plt.ylabel("True", fontsize=12)
+    plt.title(f"{title} — Confusion Matrix ({suffix})", fontsize=13)
+    plt.tight_layout()
+    filename = f"results/confusion_matrix_{title.lower().replace(' ', '_')}_{suffix}.png"
+    plt.savefig(filename, dpi=300)
+    plt.close()
+    logger.info("Confusion matrix saved -> %s", filename)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Comparison bar chart
+# ──────────────────────────────────────────────────────────────────────────────
+
+def plot_metric_comparison(results: Dict[str, Dict], suffix: str) -> None:
+    """Bar chart comparing key metrics across evaluated models."""
+    models = [r["algorithm"] for r in results.values() if "algorithm" in r]
+    metrics = {
+        "Accuracy (%)":         [r.get("accuracy", 0)          for r in results.values() if "algorithm" in r],
+        "Macro F1":             [r.get("macro_f1", 0)           for r in results.values() if "algorithm" in r],
+        "Balanced Acc (%)":     [r.get("balanced_accuracy", 0)  for r in results.values() if "algorithm" in r],
+        "MCC":                  [r.get("mcc", 0)                for r in results.values() if "algorithm" in r],
+    }
+    if not models:
+        return
+
+    x = np.arange(len(models))
+    width = 0.18
+    fig, ax = plt.subplots(figsize=(max(8, len(models) * 3), 6))
+
+    for idx, (metric_name, values) in enumerate(metrics.items()):
+        ax.bar(x + idx * width, values, width, label=metric_name)
+
+    ax.set_xticks(x + width * (len(metrics) - 1) / 2)
+    ax.set_xticklabels(models)
+    ax.set_ylabel("Score")
+    ax.set_title(f"FLEX-ID Model Comparison ({suffix})")
+    ax.legend()
+    ax.grid(axis="y", alpha=0.4)
+    plt.tight_layout()
+    path = f"results/comparison_metrics_{suffix}.png"
+    plt.savefig(path, dpi=300)
+    plt.close()
+    logger.info("Comparison chart saved -> %s", path)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Main
+# ──────────────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Comprehensive evaluation of FLEX-ID federated models.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("--fedavg",   type=str, required=True, help="Path to FedAvg weights.")
+    parser.add_argument("--fedprox",  type=str, required=True, help="Path to FedProx weights.")
+    parser.add_argument("--mode",     type=str, default="custom",
+                        help="Mode label (e.g., no_attack, under_attack).")
+    parser.add_argument("--data_dir", type=str, default="data",
+                        help="Directory with processed_data.csv and label_encoder.pkl.")
     args = parser.parse_args()
 
-    mode_suffix = args.mode.replace(" ", "_").lower()
-    
-    # Ensure results directory exists
+    suffix   = args.mode.replace(" ", "_").lower()
+    data_path = os.path.join(args.data_dir, "processed_data.csv")
+    le_path   = os.path.join(args.data_dir, "label_encoder.pkl")
+
     os.makedirs("results", exist_ok=True)
 
-    # Redefine plot helper inside main or just ensure it uses correct path
-    # Actually, verify evaluate_weights calls plot_confusion_matrix with a filename argument or title?
-    # I need to pass the suffix or modify plot_confusion_matrix to take a save path.
-    # To minimize diff, I'll monkey patch or modify evaluate_weights call slightly? 
-    # Better to modify the function.
-    
-    # ... I will modify the functions too in a separate block or here if I can view them. 
-    # I can't easily modify the functions above from here without seeing them. 
-    # But I can redefine them or just change the calls if I pass arguments?
-    # Wait, functions are outside. I'll stick to modifying main here and ask for another edit for functions if needed.
-    # Actually, I can use a global variable or change the signature.
-    # Changing signature is cleaner. 
-    
-    # NOTE: I am ONLY modifying the MAIN block here. I will do a multi_replace for functions next.
-    
-    results = {}
+    X_test, y_test, class_names = load_and_process_data(data_path, le_path)
 
-    try:
-        X_test, y_test, class_names = load_and_process_data()
-        
-        # We need to tell the functions where to save.
-        
-        # Evaluate FedAvg
-        print(f"Evaluating FedAvg: {args.fedavg}")
-        fa_res = evaluate_weights(args.fedavg, X_test, y_test, class_names, "FedAvg", mode_suffix)
-        results["fedavg"] = {
-             "accuracy": fa_res["accuracy"],
-             "report": fa_res["report"],
-             "path": args.fedavg
-        }
+    results: Dict[str, Any] = {}
 
-        # Evaluate FedProx
-        print(f"Evaluating FedProx: {args.fedprox}")
-        fp_res = evaluate_weights(args.fedprox, X_test, y_test, class_names, "FedProx", mode_suffix)
-        results["fedprox"] = {
-             "accuracy": fp_res["accuracy"],
-             "report": fp_res["report"],
-             "path": args.fedprox
-        }
+    results["fedavg"] = evaluate_weights(
+        args.fedavg, X_test, y_test, class_names, "FedAvg", suffix
+    )
+    results["fedprox"] = evaluate_weights(
+        args.fedprox, X_test, y_test, class_names, "FedProx", suffix
+    )
 
-        results["success"] = True
-        results["timestamp"] = pd.Timestamp.now().isoformat()
-        results["mode"] = args.mode
+    results["meta"] = {
+        "success": True,
+        "timestamp": pd.Timestamp.now().isoformat(),
+        "mode": args.mode,
+        "random_seed": RANDOM_SEED,
+    }
 
-    except Exception as e:
-        results["success"] = False
-        results["error"] = str(e)
-        print(f"Global Error: {e}", file=sys.stderr)
+    # Comparison plot
+    plot_metric_comparison(results, suffix)
 
-    # SAVE TO FILE
-    output_filename = f"results/comparison_results_{mode_suffix}.json"
-    with open(output_filename, 'w') as f:
-        json.dump(results, f, indent=4)
-        
-    print(f"[OK] Results saved to {output_filename}")
+    # Save JSON
+    output_path = f"results/comparison_results_{suffix}.json"
+    with open(output_path, "w", encoding="utf-8") as fh:
+        json.dump(results, fh, indent=4, default=str)
+    logger.info("Results saved -> %s", output_path)
+
+
+if __name__ == "__main__":
+    main()

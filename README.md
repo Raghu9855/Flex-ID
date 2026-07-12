@@ -1,214 +1,315 @@
-# Flex-ID: Federated Learning Intrusion Detection System
+# FLEX-ID: Federated Learning Explainable Intrusion Detection System
 
-## 📚 Libraries & Technologies Used
+> **Publication-quality research framework for privacy-preserving, robust, and explainable network intrusion detection using federated learning.**
 
-This project leverages a tailored stack of Python libraries, each serving a critical role in the Federated Learning implementation:
+---
 
-| Library | Purpose in Flex-ID |
-| :--- | :--- |
-| **`flwr` (Flower)** | The core Federated Learning framework. It handles the complex communication between the Server and Clients, managing the transmission of model weights and aggregation strategies (FedAvg, FedProx). |
-| **`tensorflow`** | The Deep Learning backend used to build and train the Deep Neural Network (DNN) model. It provides the computation graph for training and gradients. |
-| **`scikit-learn`** | Used for essential data preprocessing (Label Encoding, Train-Test Splits) and performance metrics (F1 Score, Confusion Matrix, Classification Reports). |
-| **`imbalanced-learn`** | Provides **SMOTE** (Synthetic Minority Over-sampling Technique) to address class imbalance. In cyber-security datasets, attacks are rare compared to benign traffic; SMOTE generates synthetic examples to ensure the model learns to detect these rare attacks. |
-| **`pandas`** | The backbone for data manipulation. Used to load the massive CSE-CIC-IDS2018 CSV datasets, clean missing values, and handle feature columns. |
-| **`numpy`** | efficient numerical computation. Used for array manipulations, mathematical operations (like calculating weights), and handling model parameters. |
-| **`shap`** | **SH**apley **A**dditive ex**P**lanations. Provides Explainable AI (XAI) capabilities, allowing us to ask *why* the model classified a packet as an attack by visualizing feature contributions. |
-| **`matplotlib`** | Data visualization library used to generate confusion matrices, class distribution plots, and performance comparisons. |
+## Abstract
 
-## 🔄 Process Workflow & Importance
+FLEX-ID is a federated learning (FL) framework for network intrusion detection that jointly addresses **privacy**, **robustness**, and **explainability** — three requirements that are rarely tackled together in the existing literature. Clients (network nodes) collaboratively train a Deep Neural Network (DNN) classifier without sharing raw traffic data. The server aggregates model updates using configurable algorithms ranging from standard FedAvg to Byzantine-robust methods (Krum, Trimmed Mean, Coordinate Median). A federated SHAP module explains *why* the model flags traffic as malicious while ensuring that per-sample explanations never leave the client.
 
-Understanding the lifecycle of this Federated Learning system:
+---
 
-### 1. Data Preprocessing (`1_process_data.py`)
-**Why?** Raw network traffic data is messy, contains infinities, and has varying scales.
-- **What we do:** We clean the dataset, normalize numerical features (MinMax Scaling), and encode categorical labels. This ensures the Neural Network receives clean, standardized input, which is crucial for convergence.
+## Key Contributions
 
-### 2. Client Partitioning (`2_create_partitions.py`)
-**Why?** In the real world, data is **Non-IID** (Independent and Identically Distributed). A hospital in New York sees different diseases than one in Tokyo. Similarly, different network nodes see different attacks.
-- **What we do:** We split the data into 4 partitions. We intentionally skew the distributions (e.g., Client 0 sees more DDoS attacks) to simulate this real-world heterogeneity. This tests if our Federated Learning model can generalize despite these differences.
+| # | Contribution | Where |
+|---|---|---|
+| 1 | **5-attack adversarial benchmark** — label flipping, Gaussian noise, backdoor, Byzantine/model-replacement, and adaptive (constrain-and-scale) poisoning | `ml/client_attack.py` |
+| 2 | **4 robust aggregation algorithms** — Krum, Multi-Krum, Trimmed Mean, Coordinate Median — selectable at runtime alongside FedAvg/FedProx | `ml/aggregation.py`, `ml/4_server.py` |
+| 3 | **Privacy-preserving federated SHAP** — only aggregated importance vectors leave clients; Kendall's Tau and Spearman's ρ quantify explanation consistency | `ml/explain_model.py` |
+| 4 | **Scalable client architecture** — 4 / 8 / 16 clients via a single CLI flag | `ml/2_create_partitions.py`, `ml/4_server.py` |
+| 5 | **Cross-dataset preprocessing pipeline** — ready-to-use scripts for UNSW-NB15 and TON-IoT with identical feature schema | `ml/prepare_unswnb15.py`, `ml/prepare_toniot.py` |
+| 6 | **Comprehensive evaluation suite** — Accuracy, Balanced Accuracy, Macro/Weighted F1, ROC-AUC, PR-AUC, MCC, per-class metrics, inference time, communication cost | `ml/compare_results.py` |
 
-### 3. Server Initialization (`4_server.py`)
-**Why?** To coordinate the learning process without centralizing data.
-- **What we do:** The server acts as the conductor. It sends the global model to clients, waits for their updates, and then **aggregates** them.
-    - **FedAvg**: Averages weights standardly.
-    - **FedProx**: Adds a proximal term to handle "straggler" clients and heterogeneous data, preventing local models from drifting too far from the global model.
+---
 
-### 4. Client Training (`client.py` & `client_attack.py`)
-**Why?** Privacy. Data never leaves the client device.
-- **What we do:**
-    - **Local Training**: Clients train the model on their *local* private data.
-    - **Class Balancing**: We apply **SMOTE** locally so the model doesn't just learn to predict "Benign" for everything.
-    - **Adversarial Simulation**: We use `client_attack.py` to pretend to be a hacker (flipping labels or poisoning weights) to test if the Server is robust enough to detect or survive the attack.
+## System Architecture
 
-### 5. Evaluation & Explainability
-**Why?** Trust. A black-box model is dangerous in security.
-- **What we do:** We generate confusion matrices to see exact detection rates. We use **SHAP** to verify that the model is looking at relevant features (e.g., Packet Size, Flow Duration) rather than noise.
+```mermaid
+flowchart TD
+    subgraph Data["Data Preparation"]
+        A[Raw CSVs\nCIC-IDS2018 / UNSW-NB15 / TON-IoT] --> B[1_process_data.py\nClean · Scale · Encode]
+        B --> C[2_create_partitions.py\nNon-IID Dirichlet split\n4 / 8 / 16 clients]
+    end
 
-This project implements a Federated Learning-based Intrusion Detection System (IDS) using the CSE-CIC-IDS2018 dataset. It supports both **FedAvg** and **FedProx** strategies to train models across distributed clients while keeping data decentralized.
+    subgraph FL["Federated Training"]
+        C --> D[Client 0\nclient.py]
+        C --> E[Client 1..n-1\nclient.py]
+        C --> F[Malicious Client\nclient_attack.py]
+        D & E & F -->|Local weights| G[4_server.py\nFedAvg · FedProx\nKrum · Multi-Krum\nTrimmed Mean · Median]
+        G -->|Global weights| D & E & F
+    end
 
-## 📂 Project Structure
+    subgraph Eval["Evaluation & XAI"]
+        G -->|Saved weights| H[compare_results.py\nAcc · F1 · ROC-AUC\nPR-AUC · MCC · per-class]
+        G -->|Saved weights| I[explain_model.py\nFederated SHAP\nKendall Tau · Spearman ρ\nStability Score]
+        H & I --> J[results/\npng · json · csv]
+    end
+```
 
-- **Data Processing**:
-  - `1_process_data.py`: Cleans and normalizes the raw CSE-CIC-IDS2018 dataset.
-  - `2_create_partitions.py`: Splits the processed data into Non-IID partitions for each client.
-- **Federated Learning**:
-  - `4_server.py`: The central server that coordinates training rounds and aggregates weights.
-  - `client.py`: The client script that trains local models on its data partition.
-- **Analysis**:
-  - `plot_history.py` & `compare_results.py`: Visualization tools for model performance.
+---
 
-## 🚀 Setup & Installation
+## Project Structure
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/Mahesh20dev/Flex-ID.git
-    cd Flex-ID
-    ```
+```
+Flex-ID/
+├── ml/
+│   ├── 1_process_data.py          # CIC-IDS2018 preprocessing
+│   ├── 2_create_partitions.py     # Non-IID client partitioning (4/8/16 clients)
+│   ├── 4_server.py                # FL server with 6 aggregation strategies
+│   ├── client.py                  # Honest federated client
+│   ├── client_attack.py           # Malicious client (5 attack types)
+│   ├── model.py                   # DNN architecture
+│   ├── explain_model.py           # Federated SHAP explainability
+│   ├── compare_results.py         # Full evaluation suite
+│   ├── plot_history.py            # Learning curve plots + CSV export
+│   ├── aggregation.py             # Krum / Multi-Krum / Trimmed Mean / Median
+│   ├── prepare_unswnb15.py        # UNSW-NB15 preprocessing
+│   ├── prepare_toniot.py          # TON-IoT preprocessing
+│   └── utils/
+│       ├── __init__.py
+│       ├── seeds.py               # Global seed management
+│       └── data_utils.py          # Shared data-loading helpers
+├── backend/                       # Node.js REST API
+├── frontend/                      # React dashboard
+├── docs/
+│   ├── ATTACK_GUIDE.md
+│   ├── DATASET_GUIDE.md
+│   ├── TRAINING_GUIDE.md
+│   └── EVALUATION_GUIDE.md
+├── data/                          # Processed data (gitignored)
+├── results/                       # Output artefacts (gitignored)
+├── requirements.txt
+└── README.md
+```
 
-2.  **Install Dependencies**:
-    Ensure you have Python installed, then run:
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *(Note: If `requirements.txt` is missing, you'll likely need: `flwr`, `tensorflow`, `pandas`, `numpy`, `scikit-learn`, `matplotlib`)*
+---
 
-## 🛠️ Step-by-Step Execution Guide
+## Installation
 
-### Step 1: Data Preprocessing
-Prepare the raw dataset for training. This script handles feature selection, cleaning, and normalization.
 ```bash
+git clone https://github.com/Raghu9855/Flex-ID.git
+cd Flex-ID
+pip install -r requirements.txt
+```
+
+**Dependencies:** `flwr`, `tensorflow`, `scikit-learn`, `imbalanced-learn`,
+`shap`, `scipy`, `pandas`, `numpy`, `matplotlib`, `seaborn`
+
+---
+
+## Step-by-Step Execution
+
+### Step 1 — Data Preprocessing
+
+```bash
+cd ml
 python 1_process_data.py
 ```
-*Input: `combined_ids2018_raw.csv`*
-*Output: `processed_data.csv`*
 
-### Step 2: Create Client Partitions
-Split the processed data into partitions for 4 clients. This simulates a Non-IID environment where different clients see different data distributions.
+*Input:* `data/combined_ids2018_raw.csv`  
+*Output:* `data/processed_data.csv`
+
+### Step 2 — Create Client Partitions
+
 ```bash
+# 4 clients (default)
 python 2_create_partitions.py
+
+# 8 clients
+python 2_create_partitions.py --num_clients 8
+
+# 16 clients
+python 2_create_partitions.py --num_clients 16
 ```
-*Output: `client_partition_0.pkl`, `client_partition_1.pkl`, etc.*
 
-### Step 3: Start the Server
-Run the central server. You can choose between `fedavg` or `fedprox` strategies.
+*Output:* `data/client_partition_0.pkl` … `data/client_partition_{n-1}.pkl`
+
+### Step 3 — Start the Server
+
 ```bash
-# For FedAvg (Standard)
-python 4_server.py --strategy fedavg --rounds 30
+# FedAvg
+python 4_server.py --strategy fedavg --rounds 30 --num_clients 4
 
-# For FedProx (Robust to heterogeneity)
+# FedProx (μ = 0.1)
 python 4_server.py --strategy fedprox --rounds 30 --proximal_mu 0.1
+
+# Krum (Byzantine-robust, 1 assumed Byzantine client)
+python 4_server.py --aggregation krum --rounds 30 --num_clients 8 --num_byzantine 1
+
+# Multi-Krum
+python 4_server.py --aggregation multikrum --rounds 30 --num_clients 8
+
+# Trimmed Mean (trim 25% per tail)
+python 4_server.py --aggregation trimmed_mean --trim_ratio 0.25 --num_clients 8
+
+# Coordinate Median
+python 4_server.py --aggregation median --rounds 30 --num_clients 16
 ```
 
-### Step 4: Start Clients
-Open **4 separate terminals** (or use a script) to launch the clients. Each client connects to the server and trains on its local partition.
+### Step 4 — Start Clients
 
-**Terminal 1:**
+Open **N separate terminals** (one per client):
+
 ```bash
-python client.py --client_id 0
-```
-**Terminal 2:**
-```bash
-python client.py --client_id 1
-```
-**Terminal 3:**
-```bash
-python client.py --client_id 2
-```
-**Terminal 4:**
-```bash
-python client.py --client_id 3
+# Terminal 0
+python client.py --cid 0
+
+# Terminal 1
+python client.py --cid 1
+
+# ... up to --cid N-1
 ```
 
-### Step 5: View Results
-After training is complete, results are saved in the `results/` directory. You can visualize them using:
+### Step 5 — Adversarial Evaluation
+
+Replace one or more clients with a malicious client:
+
+```bash
+# Label Flipping — flip 100% of labels to Benign
+python client_attack.py --cid 0 --attack_type flip --scale 1.0
+
+# Gaussian Noise — add noise (std=0.5) to weights
+python client_attack.py --cid 0 --attack_type noise --scale 0.5
+
+# Backdoor — trigger on feature 5, poison 30% of attack samples
+python client_attack.py --cid 0 --attack_type backdoor --scale 0.3 \
+    --trigger_feature_idx 5 --trigger_value 999.0
+
+# Byzantine / Model Replacement — amplify update by 10×
+python client_attack.py --cid 0 --attack_type byzantine --scale 10.0
+
+# Adaptive (Constrain-and-Scale) — 20 gradient ascent steps
+python client_attack.py --cid 0 --attack_type adaptive --scale 2.0
+```
+
+### Step 6 — Evaluate
+
+```bash
+python compare_results.py \
+    --fedavg  results/fedavgeachround/round-30-weights.pkl \
+    --fedprox results/fedproxeachround/round-30-weights.pkl \
+    --mode    no_attack
+```
+
+### Step 7 — Explainability
+
+```bash
+# Explain round 30, 4 clients, 100 background samples
+python explain_model.py --round 30 --num_clients 4 --bg_size 100 --explain_size 50
+```
+
+*Output:* `results/*_shap.png`, `results/shap_summary.json`
+
+### Step 8 — Learning Curves
+
 ```bash
 python plot_history.py
 ```
 
-## �️ Adversarial Attacks
-You can simulate attacks by replacing one or more normal clients with a malicious client.
+*Output:* `results/comparison_metrics.png`, `results/round_metrics_*.csv`
 
-**1. Data Poisoning (Label Flipping):**
-Flips labels of malicious traffic to 'Benign', confusing the model.
+---
+
+## Attack Reference
+
+| Attack | `--attack_type` | Mechanism | Scale Meaning |
+|---|---|---|---|
+| Label Flipping | `flip` | Relabels attack traffic as Benign | Fraction of samples flipped (0–1) |
+| Gaussian Noise | `noise` | Adds N(0, σ) to model weights | Noise std deviation σ |
+| Backdoor | `backdoor` | Stamps a feature trigger; poisons label to Benign | Fraction of attack samples poisoned |
+| Byzantine | `byzantine` | Amplifies weight update delta by scale factor | Amplification multiplier |
+| Adaptive | `adaptive` | Gradient ascent + constrain-and-scale clipping | Steps = scale × 10 |
+
+---
+
+## Aggregation Reference
+
+| Strategy | `--aggregation` | Robustness | Requirement |
+|---|---|---|---|
+| FedAvg | `fedavg` | None | — |
+| FedProx | `fedprox` | Non-IID drift | `--proximal_mu` |
+| Krum | `krum` | Byzantine | n ≥ 2f+3 (⚠ fails at n=4, f=1) |
+| Multi-Krum | `multikrum` | Byzantine | n ≥ 2f+3 recommended |
+| Trimmed Mean | `trimmed_mean` | Byzantine | `--trim_ratio` |
+| Coord. Median | `median` | Byzantine | — |
+
+> **Note on FedProx:** FedProx adds a *proximal regularisation term* (μ/2 · ‖w − w_global‖²) to each client's local objective to reduce model drift under non-IID data heterogeneity. It is **not** a Byzantine-robust aggregation rule. Byzantine robustness requires Krum, Trimmed Mean, or Coordinate Median.
+
+---
+
+## Performance Results (CIC-IDS2018, 4 clients, 30 rounds)
+
+| Scenario | Strategy | Accuracy | Weighted F1 | Macro F1 | Notes |
+|---|---|---|---|---|---|
+| No Attack | FedAvg | 88.40% | 0.86 | — | Baseline |
+| No Attack | **FedProx** | **88.81%** | **0.89** | — | Best clean |
+| Under Attack | FedAvg | 76.29% | 0.67 | — | Significant drop |
+| Under Attack | **FedProx** | **89.11%** | **0.89** | — | Resilient |
+
+> Attacks tested: label-flipping (Client 0, 100% flip ratio) and Gaussian noise (std=0.5).
+
+---
+
+## Multi-Dataset Support
+
 ```bash
-# Run instead of normal client.py
-python client_attack.py --cid 0 --attack_type flip --scale 1.0
+# UNSW-NB15
+python prepare_unswnb15.py --input_dir data_unswnb15/raw --output_dir data_unswnb15
+python 2_create_partitions.py --data_dir data_unswnb15 --num_clients 4
+python 4_server.py --strategy fedavg --data_dir data_unswnb15
+
+# TON-IoT
+python prepare_toniot.py --input_dir data_toniot/raw --output_dir data_toniot
+python 2_create_partitions.py --data_dir data_toniot --num_clients 4
+python 4_server.py --strategy fedavg --data_dir data_toniot
 ```
 
-**2. Model Poisoning (Noise Injection):**
-Adds Gaussian noise to the trained weights before sending them to the server.
-```bash
-# Run instead of normal client.py
-python client_attack.py --cid 0 --attack_type noise --scale 0.5
+Download datasets:
+- UNSW-NB15: https://research.unsw.edu.au/projects/unsw-nb15-dataset
+- TON-IoT: https://research.unsw.edu.au/projects/toniot-datasets
+
+---
+
+## Reproducibility
+
+All experiments use **seed = 42** applied globally to:
+- Python `random`
+- `numpy.random`
+- `tensorflow.random`
+- OS hash seed (`PYTHONHASHSEED`)
+
+```python
+from utils.seeds import set_global_seeds
+set_global_seeds(42)
 ```
 
-## 🧠 Explainable AI (XAI)
-Understand why the model makes specific decisions using **SHAP (SHapley Additive exPlanations)**.
+---
 
-This script loads a trained model (from valid weights) and generates a summary plot showing which network features contributed most to the detection of attacks.
+## References
 
-```bash
-# General usage (tries to find default weights)
-python explain_model.py
+1. McMahan, H. B., Moore, E., Ramage, D., Hampson, S., & Agüera y Arcas, B. (2017). Communication-efficient learning of deep networks from decentralized data. *AISTATS*, 54, 1273–1282.
 
-# Explain a specific round from FedAvg
-python explain_model.py --round 10
+2. Li, T., Sahu, A. K., Zaheer, M., Sanjabi, M., Talwalkar, A., & Smith, V. (2020). Federated optimization in heterogeneous networks. *MLSys*, 3.
 
-# Explain a specific weights file
-python explain_model.py --weights fedavgeachround/round-5-weights.pkl
-```
+3. Lundberg, S. M., & Lee, S.-I. (2017). A unified approach to interpreting model predictions. *NeurIPS*, 30, 4765–4774.
 
-**Output:** `shap_summary_plot.png` (Shows feature importance ranking).
+4. Blanchard, P., Guerraoui, R., Stainer, J., et al. (2017). Machine learning with adversaries: Byzantine tolerant gradient descent. *NeurIPS*, 30.
 
-## 📈 Performance Results
+5. Yin, D., Chen, Y., Kannan, R., & Bartlett, P. (2018). Byzantine-robust distributed learning: Towards optimal statistical rates. *ICML*, 80, 5650–5659.
 
-Below is a summary of the Global Model's performance across different scenarios. The results highlight the resilience of the **FedProx** strategy compared to the standard FedAvg approach.
+6. Sharafaldin, I., Habibi Lashkari, A., & Ghorbani, A. A. (2018). Toward generating a new intrusion detection dataset and intrusion traffic characterization. *ICISSP*, 108–116.
 
-| Scenario | Strategy | Accuracy | Weighted F1-Score | Result |
-| :--- | :--- | :--- | :--- | :--- |
-| **Baseline (No Attack)** | FedAvg | 88.40% | 0.86 | Good Performance |
-| | **FedProx** | **88.81%** | **0.89** | Slightly Better |
-| **Adversarial Attack** | FedAvg | 76.29% | 0.67 | **Significant Drop** |
-| | **FedProx** | **89.11%** | **0.89** | **Resilient** |
+7. Bagdasaryan, E., Veit, A., Hua, Y., Estrin, D., & Shmatikoff, V. (2020). How to backdoor federated learning. *AISTATS*, 108, 2938–2948.
 
-### 📊 Importance of Evaluation Metrics
+8. Moustafa, N., & Slay, J. (2015). UNSW-NB15: A comprehensive data set for network intrusion detection systems. *MilCIS*.
 
-In the context of an Intrusion Detection System (IDS), not all metrics are created equal:
+9. Alsaedi, A., Moustafa, N., Tari, Z., Mahmood, A., & Anwar, A. (2020). TON_IoT telemetry dataset. *IEEE Access*, 8, 165130–165150.
 
-- **Accuracy**: Indicates the general correctness of the model. However, in security datasets where 90% of traffic might be benign, a high accuracy can be misleading (e.g., a model that predicts "Benign" for everything might still be 90% accurate but 0% effective).
-- **Recall (Detection Rate)**: **Critical for Security.** It measures the percentage of actual attacks that were successfully detected. A low recall means the system is missing attacks (False Negatives), leaving the network vulnerable.
-- **F1-Score**: The harmonic mean of Precision and Recall. It provides a balanced view, ensuring the model isn't just flagging everything as an attack (low precision) or missing too many threats (low recall).
+---
 
-#### Project Performance Analysis
-- **Resilience**: Under adversarial attack (Data/Model poisoning), the standard **FedAvg** model's reliability crashes, with its F1-score dropping to **0.67**. In contrast, our **FedProx** implementation proves robust, maintaining a high **0.89 F1-score**.
-- **Critical Detection**: Most importantly, FedProx sustains a high **Recall**, ensuring that it continues to detect intrusions even when some clients are compromised.
+## Notes
 
-#### ⚖️ False Positives vs. False Negatives
-Understanding the trade-off in our results:
-
-- **False Positive (FP)**: Legitimate traffic incorrectly flagged as an attack ("False Alarm").
-    - *Impact*: Inconvenience. A user might be temporarily blocked or asked to re-authenticate.
-- **False Negative (FN)**: An actual attack incorrectly flagged as safe ("Missed Attack").
-    - *Impact*: **Critical Security Breach.** The system fails to stop an intruder.
-
-**Project Analysis:**
-- **FedAvg (Compromised)**: When attacked, it collapsed to predicting "Benign" for almost everything.
-    - **FP ≈ 0**: It rarely raised alarms.
-    - **FN ≈ 100%**: **Catastrophic.** It missed almost every attack.
-- **FedProx (Robust)**: It maintained a defensive posture.
-    - **FP**: Increased slightly (flagging ~9% of benign traffic).
-    - **FN**: **Very Low.** It successfully detected ~96% of attacks.
-    - **Conclusion**: FedProx effectively prioritized security (Low FN) over convenience (Low FP), which is the correct behavior for a critical system.
-
-
-
-
-
-## �📊 Dataset Info
-The project uses the **CSE-CIC-IDS2018** dataset, focusing on relevant network traffic features for cloud environments.
-- **Raw Data**: `combined_ids2018_raw.csv`
-- **Processed Data**: `processed_data.csv` (Normalized and cleaned)
-
-## ⚠️ Notes
-- Large data files (`*.csv`) are stored using **Git LFS**.
-- Generated files (`*.pkl`, `*.png`, `results/`) are excluded from the repository to keep it clean.
+- Large data files (`*.csv`) are stored via **Git LFS**.
+- Generated artefacts (`*.pkl`, `*.png`, `results/`) are excluded via `.gitignore`.
+- Run all `ml/` scripts from inside the `ml/` directory so relative paths resolve correctly.
