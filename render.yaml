@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: flex-id-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DATABASE_URL
+        value: sqlite:///./flex_id.db
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: PORT
+        value: "8000"

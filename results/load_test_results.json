@@ -1,0 +1,97 @@
+[
+  {
+    "scenario": "Health Check",
+    "endpoint": "GET /health",
+    "total_requests": 50,
+    "concurrency": 5,
+    "successful": 50,
+    "failed": 0,
+    "wall_time_sec": 0.206,
+    "rps": 242.6,
+    "latency_ms": {
+      "min": 5.35,
+      "avg": 16.84,
+      "p50": 13.84,
+      "p90": 30.49,
+      "p95": 35.54,
+      "p99": 54.06,
+      "max": 67.03
+    }
+  },
+  {
+    "scenario": "List Models",
+    "endpoint": "GET /api/v1/models",
+    "total_requests": 50,
+    "concurrency": 5,
+    "successful": 50,
+    "failed": 0,
+    "wall_time_sec": 0.195,
+    "rps": 256.6,
+    "latency_ms": {
+      "min": 12.1,
+      "avg": 17.68,
+      "p50": 16.96,
+      "p90": 21.83,
+      "p95": 22.36,
+      "p99": 30.13,
+      "max": 37.2
+    }
+  },
+  {
+    "scenario": "Single Prediction",
+    "endpoint": "POST /api/v1/predictions",
+    "total_requests": 50,
+    "concurrency": 5,
+    "successful": 50,
+    "failed": 0,
+    "wall_time_sec": 1.559,
+    "rps": 32.1,
+    "latency_ms": {
+      "min": 56.48,
+      "avg": 152.14,
+      "p50": 111.47,
+      "p90": 204.35,
+      "p95": 497.59,
+      "p99": 542.29,
+      "max": 568.78
+    }
+  },
+  {
+    "scenario": "Batch Prediction (x10)",
+    "endpoint": "POST /api/v1/predictions/batch",
+    "total_requests": 25,
+    "concurrency": 5,
+    "successful": 25,
+    "failed": 0,
+    "wall_time_sec": 0.484,
+    "rps": 51.6,
+    "latency_ms": {
+      "min": 47.25,
+      "avg": 92.58,
+      "p50": 95.89,
+      "p90": 109.55,
+      "p95": 112.4,
+      "p99": 122.56,
+      "max": 125.55
+    }
+  },
+  {
+    "scenario": "SHAP Explanation",
+    "endpoint": "POST /api/v1/explanations",
+    "total_requests": 15,
+    "concurrency": 5,
+    "successful": 15,
+    "failed": 0,
+    "wall_time_sec": 0.918,
+    "rps": 16.3,
+    "latency_ms": {
+      "min": 174.35,
+      "avg": 282.6,
+      "p50": 258.85,
+      "p90": 373.16,
+      "p95": 376.06,
+      "p99": 380.46,
+      "max": 381.56
+    }
+  }
+]

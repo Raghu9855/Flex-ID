@@ -1,0 +1,61 @@
+FLEX-ID Federated Learning Data Partition Report
+Number of Clients : 8
+Non-IID Alpha     : 0.4
+Random Seed       : 42
+==================================================
+
+Client 0:
+  Total Samples : 142037
+  Train         : 113629
+  Test          : 28408
+  Distribution  : Benign: 66394, Brute Force -Web: 23, Brute Force -XSS: 5, DDOS attack-HOIC: 27649, DDOS attack-LOIC-UDP: 74, DoS attacks-GoldenEye: 1652, DoS attacks-Hulk: 18480, DoS attacks-SlowHTTPTest: 5538, DoS attacks-Slowloris: 449, FTP-BruteForce: 7716, Infilteration: 6411, SQL Injection: 7, SSH-Bruteforce: 7639
+----------------------------------------
+
+Client 1:
+  Total Samples : 82603
+  Train         : 66082
+  Test          : 16521
+  Distribution  : Benign: 66393, Brute Force -Web: 6, Brute Force -XSS: 5, DDOS attack-HOIC: 5860, DDOS attack-LOIC-UDP: 12, DoS attacks-GoldenEye: 364, DoS attacks-Hulk: 3927, DoS attacks-SlowHTTPTest: 1255, DoS attacks-Slowloris: 89, FTP-BruteForce: 1743, Infilteration: 1355, SSH-Bruteforce: 1594
+----------------------------------------
+
+Client 2:
+  Total Samples : 82603
+  Train         : 66082
+  Test          : 16521
+  Distribution  : Benign: 66393, Brute Force -Web: 3, DDOS attack-HOIC: 5914, DDOS attack-LOIC-UDP: 13, DoS attacks-GoldenEye: 403, DoS attacks-Hulk: 3958, DoS attacks-SlowHTTPTest: 1178, DoS attacks-Slowloris: 77, FTP-BruteForce: 1659, Infilteration: 1418, SSH-Bruteforce: 1587
+----------------------------------------
+
+Client 3:
+  Total Samples : 82602
+  Train         : 66081
+  Test          : 16521
+  Distribution  : Benign: 66393, Brute Force -Web: 7, Brute Force -XSS: 2, DDOS attack-HOIC: 5927, DDOS attack-LOIC-UDP: 24, DoS attacks-GoldenEye: 357, DoS attacks-Hulk: 3915, DoS attacks-SlowHTTPTest: 1219, DoS attacks-Slowloris: 94, FTP-BruteForce: 1712, Infilteration: 1370, SQL Injection: 3, SSH-Bruteforce: 1579
+----------------------------------------
+
+Client 4:
+  Total Samples : 82602
+  Train         : 66081
+  Test          : 16521
+  Distribution  : Benign: 66393, Brute Force -Web: 4, Brute Force -XSS: 5, DDOS attack-HOIC: 5874, DDOS attack-LOIC-UDP: 12, DoS attacks-GoldenEye: 367, DoS attacks-Hulk: 3973, DoS attacks-SlowHTTPTest: 1244, DoS attacks-Slowloris: 99, FTP-BruteForce: 1665, Infilteration: 1376, SQL Injection: 1, SSH-Bruteforce: 1589
+----------------------------------------
+
+Client 5:
+  Total Samples : 82602
+  Train         : 66081
+  Test          : 16521
+  Distribution  : Benign: 66393, Brute Force -Web: 4, Brute Force -XSS: 1, DDOS attack-HOIC: 5844, DDOS attack-LOIC-UDP: 13, DoS attacks-GoldenEye: 332, DoS attacks-Hulk: 4033, DoS attacks-SlowHTTPTest: 1179, DoS attacks-Slowloris: 119, FTP-BruteForce: 1674, Infilteration: 1353, SSH-Bruteforce: 1657
+----------------------------------------
+
+Client 6:
+  Total Samples : 82602
+  Train         : 66081
+  Test          : 16521
+  Distribution  : Benign: 66393, Brute Force -Web: 7, Brute Force -XSS: 2, DDOS attack-HOIC: 5890, DDOS attack-LOIC-UDP: 15, DoS attacks-GoldenEye: 353, DoS attacks-Hulk: 3954, DoS attacks-SlowHTTPTest: 1225, DoS attacks-Slowloris: 94, FTP-BruteForce: 1615, Infilteration: 1405, SQL Injection: 2, SSH-Bruteforce: 1647
+----------------------------------------
+
+Client 7:
+  Total Samples : 82602
+  Train         : 66081
+  Test          : 16521
+  Distribution  : Benign: 66393, Brute Force -Web: 3, Brute Force -XSS: 1, DDOS attack-HOIC: 5896, DDOS attack-LOIC-UDP: 12, DoS attacks-GoldenEye: 326, DoS attacks-Hulk: 3922, DoS attacks-SlowHTTPTest: 1184, DoS attacks-Slowloris: 105, FTP-BruteForce: 1673, Infilteration: 1390, SQL Injection: 1, SSH-Bruteforce: 1696
+----------------------------------------

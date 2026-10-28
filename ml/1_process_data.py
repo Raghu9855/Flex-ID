@@ -104,6 +104,13 @@ df_processed['label'] = y.values
 # --- 6. Save ---
 df_processed.to_csv(OUTPUT_FILE, index=False)
 
+# Save fitted scaler for production inference
+import pickle
+scaler_file = 'data/scaler.pkl'
+with open(scaler_file, 'wb') as sf:
+    pickle.dump(scaler, sf)
+print(f"Saved fitted scaler to: {scaler_file}")
+
 end_time = time.time()
 print(f"--- Preprocessing Complete ({end_time - start_time:.2f}s) ---")
 print(f"Saved to: {OUTPUT_FILE}")

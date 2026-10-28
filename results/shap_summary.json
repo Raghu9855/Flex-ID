@@ -1,0 +1,138 @@
+{
+    "FedAvg": {
+        "round": 10,
+        "num_clients": 4,
+        "bg_size": 30,
+        "explain_size": 3,
+        "top_10_features": [
+            {
+                "rank": 1,
+                "feature": "Protocol",
+                "importance_pct": 100.0
+            },
+            {
+                "rank": 2,
+                "feature": "Dst Port",
+                "importance_pct": 83.32
+            },
+            {
+                "rank": 3,
+                "feature": "ACK Flag Cnt",
+                "importance_pct": 51.5
+            },
+            {
+                "rank": 4,
+                "feature": "Init Bwd Win Byts",
+                "importance_pct": 49.34
+            },
+            {
+                "rank": 5,
+                "feature": "Bwd Pkt Len Max",
+                "importance_pct": 46.06
+            },
+            {
+                "rank": 6,
+                "feature": "RST Flag Cnt",
+                "importance_pct": 37.58
+            },
+            {
+                "rank": 7,
+                "feature": "Init Fwd Win Byts",
+                "importance_pct": 34.0
+            },
+            {
+                "rank": 8,
+                "feature": "Bwd Pkt Len Mean",
+                "importance_pct": 21.59
+            },
+            {
+                "rank": 9,
+                "feature": "Bwd Pkts/s",
+                "importance_pct": 12.86
+            },
+            {
+                "rank": 10,
+                "feature": "Pkt Len Mean",
+                "importance_pct": 11.86
+            }
+        ],
+        "agreement_metrics": {
+            "num_clients": 4,
+            "top_k": 10,
+            "kendall_tau_mean": 0.5565485923434171,
+            "kendall_tau_std": 0.061191178233741005,
+            "spearman_rho_mean": 0.7538927321840997,
+            "spearman_rho_std": 0.049244913953748,
+            "stability_score": 0.7782742961717086,
+            "jaccard_top_k_mean": 0.721056721056721
+        }
+    },
+    "FedProx": {
+        "round": 10,
+        "num_clients": 4,
+        "bg_size": 30,
+        "explain_size": 3,
+        "top_10_features": [
+            {
+                "rank": 1,
+                "feature": "Dst Port",
+                "importance_pct": 100.0
+            },
+            {
+                "rank": 2,
+                "feature": "Init Bwd Win Byts",
+                "importance_pct": 88.06
+            },
+            {
+                "rank": 3,
+                "feature": "Protocol",
+                "importance_pct": 77.48
+            },
+            {
+                "rank": 4,
+                "feature": "Init Fwd Win Byts",
+                "importance_pct": 75.99
+            },
+            {
+                "rank": 5,
+                "feature": "ACK Flag Cnt",
+                "importance_pct": 73.06
+            },
+            {
+                "rank": 6,
+                "feature": "Bwd Pkt Len Max",
+                "importance_pct": 46.86
+            },
+            {
+                "rank": 7,
+                "feature": "RST Flag Cnt",
+                "importance_pct": 39.87
+            },
+            {
+                "rank": 8,
+                "feature": "Bwd Pkt Len Mean",
+                "importance_pct": 22.58
+            },
+            {
+                "rank": 9,
+                "feature": "Bwd Pkts/s",
+                "importance_pct": 18.64
+            },
+            {
+                "rank": 10,
+                "feature": "Flow Pkts/s",
+                "importance_pct": 11.96
+            }
+        ],
+        "agreement_metrics": {
+            "num_clients": 4,
+            "top_k": 10,
+            "kendall_tau_mean": 0.5486106681742676,
+            "kendall_tau_std": 0.08257450750213115,
+            "spearman_rho_mean": 0.739081787115809,
+            "spearman_rho_std": 0.06371326448136612,
+            "stability_score": 0.7743053340871338,
+            "jaccard_top_k_mean": 0.6744366744366744
+        }
+    }
+}

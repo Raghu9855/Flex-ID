@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flex_id_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - DATABASE_URL=mysql+pymysql://flex_user:flex_password@db:3306/flex_id_db
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEFAULT_MODEL_VERSION=fedprox-v1
+      - MAX_BATCH_SIZE=1000
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./results:/app/results
+    networks:
+      - flex_network
+
+  db:
+    image: mysql:8.0
+    container_name: flex_id_mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secure_password
+      MYSQL_DATABASE: flex_id_db
+      MYSQL_USER: flex_user
+      MYSQL_PASSWORD: flex_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "flex_user", "-pflex_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - flex_network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  flex_network:
+    driver: bridge

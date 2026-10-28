@@ -1,0 +1,36 @@
+{
+    "random_seed": 42,
+    "fedavg": {
+        "rounds": 10,
+        "best_accuracy_pct": "92.45%",
+        "best_f1": "0.6079",
+        "last_accuracy_pct": "81.52%",
+        "last_f1": "0.3956",
+        "last_loss": "0.3389"
+    },
+    "fedprox": {
+        "rounds": 10,
+        "best_accuracy_pct": "90.89%",
+        "best_f1": "0.5889",
+        "last_accuracy_pct": "90.89%",
+        "last_f1": "0.5889",
+        "last_loss": "0.4209"
+    },
+    "fedavg_under_attack": {
+        "rounds": 10,
+        "best_accuracy_pct": "92.60%",
+        "best_f1": "0.5793",
+        "last_accuracy_pct": "85.43%",
+        "last_f1": "0.4329",
+        "last_loss": "0.3474"
+    },
+    "fedprox_under_attack": {
+        "rounds": 10,
+        "best_accuracy_pct": "89.08%",
+        "best_f1": "0.5202",
+        "last_accuracy_pct": "88.92%",
+        "last_f1": "0.5202",
+        "last_loss": "0.4345"
+    },
+    "communication_cost_kb_per_round": 201.05
+}
