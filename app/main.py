@@ -72,6 +72,12 @@ def create_application() -> FastAPI:
     app.add_exception_handler(FlexIDException, flex_id_exception_handler)
     app.add_exception_handler(Exception, global_exception_handler)
 
+    # Root Redirect to Interactive Documentation
+    @app.get("/", tags=["Root"], include_in_schema=False)
+    async def root_redirect():
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/docs")
+
     # Root Health Check (Convenient for Docker / K8s probes)
     app.add_api_route("/health", check_health, methods=["GET"], tags=["Health & Status"], include_in_schema=True)
 
