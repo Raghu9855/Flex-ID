@@ -2,6 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.138+-009688.svg)](https://fastapi.tiangolo.com/)
+[![Live Demo](https://img.shields.io/badge/Live%20API-Render.com-46E3B7.svg)](https://flex-id-api.onrender.com/docs)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0+-red.svg)](https://www.sqlalchemy.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 [![Pytest](https://img.shields.io/badge/Pytest-19%20Passed%20(100%25)-brightgreen.svg)](https://docs.pytest.org/)
@@ -9,6 +10,9 @@
 [![ML](https://img.shields.io/badge/TensorFlow%20%2F%20Keras-3.0+-FF6F00.svg)](https://www.tensorflow.org/)
 
 > **A high-performance, API-driven network intrusion detection and security analytics platform powered by Federated Learning (FL), FastAPI, SQLAlchemy, and Explainable AI (SHAP).**
+> 
+> 🌐 **Live Cloud Deployment:** [https://flex-id-api.onrender.com/docs](https://flex-id-api.onrender.com/docs) (Interactive Swagger UI)  
+> 🩺 **Service Health Status:** [https://flex-id-api.onrender.com/health](https://flex-id-api.onrender.com/health)
 
 ---
 
