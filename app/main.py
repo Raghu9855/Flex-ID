@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -72,11 +74,27 @@ def create_application() -> FastAPI:
     app.add_exception_handler(FlexIDException, flex_id_exception_handler)
     app.add_exception_handler(Exception, global_exception_handler)
 
-    # Root Redirect to Interactive Documentation
-    @app.get("/", tags=["Root"], include_in_schema=False)
-    async def root_redirect():
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/docs")
+    # Frontend UI and Static Assets
+    frontend_dir = settings.PROJECT_ROOT_PATH / "frontend"
+    if frontend_dir.exists():
+        css_dir = frontend_dir / "css"
+        if css_dir.exists():
+            app.mount("/css", StaticFiles(directory=str(css_dir)), name="css")
+        js_dir = frontend_dir / "js"
+        if js_dir.exists():
+            app.mount("/js", StaticFiles(directory=str(js_dir)), name="js")
+
+        @app.get("/", tags=["UI"], include_in_schema=False)
+        @app.get("/ui", tags=["UI"], include_in_schema=False)
+        async def serve_ui():
+            index_path = frontend_dir / "index.html"
+            if index_path.exists():
+                return FileResponse(str(index_path))
+            return RedirectResponse(url="/docs")
+    else:
+        @app.get("/", tags=["Root"], include_in_schema=False)
+        async def root_redirect():
+            return RedirectResponse(url="/docs")
 
     # Root Health Check (Convenient for Docker / K8s probes)
     app.add_api_route("/health", check_health, methods=["GET"], tags=["Health & Status"], include_in_schema=True)

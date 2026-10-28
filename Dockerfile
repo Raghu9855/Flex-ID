@@ -55,6 +55,7 @@ COPY --chown=appuser:appgroup app/ /app/app/
 COPY --chown=appuser:appgroup ml/ /app/ml/
 COPY --chown=appuser:appgroup data/ /app/data/
 COPY --chown=appuser:appgroup results/ /app/results/
+COPY --chown=appuser:appgroup frontend/ /app/frontend/
 COPY --chown=appuser:appgroup .env.example /app/.env.example
 
 # Grant appuser ownership of the /app working directory so SQLite can create and write flex_id.db

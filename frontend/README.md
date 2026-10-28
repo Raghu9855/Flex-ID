@@ -1,16 +1,27 @@
-# React + Vite
+# FLEX-ID — Apple-Inspired Frontend Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This directory contains the user interface for **FLEX-ID**, redesigned as a minimalist, high-precision, Apple-inspired cybersecurity product.
 
-Currently, two official plugins are available:
+## Technology Stack
+* **HTML5**: Semantic, accessible markup.
+* **CSS3**: Custom design tokens, tabular numerals, light/dark themes (`prefers-color-scheme` + manual toggle), and responsive layout.
+* **Vanilla JavaScript (ES6+)**: Zero framework dependencies, zero build steps, native `fetch` client communicating with FastAPI REST endpoints.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Structure
+```
+frontend/
+├── index.html        # Semantic HTML5 layout for all 5 core views
+├── css/
+│   └── style.css     # Apple design system, custom properties, typography & components
+└── js/
+    ├── api.js        # Native fetch API client for FastAPI endpoints
+    └── app.js        # State, tab routing, SVG charts, preset loaders, and event handlers
+```
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Running
+The frontend is served directly by the FastAPI backend:
+```powershell
+.\run.ps1 api
+```
+Access the application at `http://127.0.0.1:8000/` or `http://127.0.0.1:8000/ui`.
+Interactive OpenAPI documentation remains available at `http://127.0.0.1:8000/docs`.
