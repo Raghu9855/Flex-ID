@@ -17,4 +17,4 @@ services:
       - key: DATABASE_URL
         value: sqlite:///./flex_id.db
       - key: CORS_ORIGINS
-        value: "*"
+        value: '["*"]'
