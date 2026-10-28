@@ -18,5 +18,3 @@ services:
         value: sqlite:///./flex_id.db
       - key: CORS_ORIGINS
         value: "*"
-      - key: PORT
-        value: "8000"
